@@ -2,8 +2,22 @@ const axios = require('axios');
 
 // Прокси-функция для API
 exports.handler = async function (event, context) {
-    // URL API сервера, который можно заменить на URL вашего сервера
-    const API_URL = process.env.API_URL || 'https://budgetnik-api.herokuapp.com';
+    // URL API сервера
+    const API_URL = process.env.API_URL || 'https://api.budzhetnik.ru';
+
+    // Обработка предварительных запросов OPTIONS для CORS
+    if (event.httpMethod === 'OPTIONS') {
+        return {
+            statusCode: 200,
+            headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
+                'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+                'Access-Control-Max-Age': '86400'
+            },
+            body: ''
+        };
+    }
 
     try {
         // Получаем путь API из URL
@@ -16,14 +30,30 @@ exports.handler = async function (event, context) {
         const headers = { ...event.headers };
         delete headers.host;
         delete headers.connection;
+        delete headers['content-length'];
+        delete headers['user-agent'];
+        delete headers['cloud-front-forwarded-proto'];
+
+        console.log(`Making ${event.httpMethod} request to: ${url}`);
+
+        // Обработка тела запроса
+        let requestBody;
+        try {
+            requestBody = event.body ? JSON.parse(event.body) : null;
+        } catch (error) {
+            requestBody = event.body;
+        }
 
         // Выполняем запрос к API серверу
         const response = await axios({
             method: event.httpMethod,
             url: url,
-            data: event.body,
+            data: requestBody,
             headers: headers,
+            validateStatus: () => true // Разрешаем любые статусы ответов
         });
+
+        console.log(`Response status: ${response.status}`);
 
         // Возвращаем ответ клиенту
         return {
@@ -32,23 +62,34 @@ exports.handler = async function (event, context) {
             headers: {
                 'Content-Type': 'application/json',
                 'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Headers': 'Origin, X-Requested-With, Content-Type, Accept, Authorization',
+                'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
                 'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
             },
         };
     } catch (error) {
-        // Обработка ошибки
-        console.error('API Error:', error);
+        // Подробная регистрация ошибки
+        console.error('API Error:', error.message);
+        if (error.response) {
+            console.error('Response status:', error.response.status);
+            console.error('Response headers:', error.response.headers);
+            console.error('Response data:', error.response.data);
+        } else if (error.request) {
+            console.error('No response received:', error.request);
+        }
 
         return {
             statusCode: error.response?.status || 500,
             body: JSON.stringify({
                 message: 'Ошибка при обращении к API',
                 error: error.response?.data || error.message,
+                path: event.path,
+                method: event.httpMethod
             }),
             headers: {
                 'Content-Type': 'application/json',
                 'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
+                'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
             },
         };
     }

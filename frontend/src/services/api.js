@@ -6,16 +6,18 @@ const getBaseURL = () => {
         // В режиме разработки фронтенд на порту 3000, бэкенд на 8000
         return 'http://localhost:8000';
     }
-    // В продакшене API находится на том же домене, что и фронтенд
+    // В продакшене используем Netlify Functions
     return '';
 };
 
 // Создаем экземпляр axios с настройками по умолчанию
 export const api = axios.create({
-    baseURL: getBaseURL(), // Базовый URL - прокси настроен в Vite
+    baseURL: getBaseURL(),
     headers: {
         'Content-Type': 'application/json',
     },
+    // Добавим timeout для запросов
+    timeout: 15000
 });
 
 // Перехватчик для добавления токена к запросам
@@ -25,6 +27,13 @@ api.interceptors.request.use(
         if (token) {
             config.headers.Authorization = `Bearer ${token}`;
         }
+
+        // Добавляем метку времени для предотвращения кэширования
+        if (config.method === 'get') {
+            config.params = config.params || {};
+            config.params['_t'] = new Date().getTime();
+        }
+
         return config;
     },
     (error) => Promise.reject(error)
@@ -34,14 +43,33 @@ api.interceptors.request.use(
 api.interceptors.response.use(
     (response) => response,
     (error) => {
+        // Логирование ошибок
+        console.error('API Error:', error.message);
+
         // Если ошибка 401 (неавторизованный) и не endpoint авторизации
         if (error.response && error.response.status === 401 &&
             !error.config.url.includes('/auth/login')) {
-            // Можно вызвать logout или перенаправить на страницу логина
             localStorage.removeItem('token');
             window.location.href = '/login';
         }
-        return Promise.reject(error);
+
+        // Формирование понятного сообщения об ошибке
+        const errorMessage =
+            error.response?.data?.message ||
+            error.message ||
+            'Произошла ошибка при обращении к серверу';
+
+        // Добавляем дополнительную информацию для отладки
+        console.debug('Request details:', {
+            url: error.config?.url,
+            method: error.config?.method,
+            status: error.response?.status
+        });
+
+        return Promise.reject({
+            ...error,
+            userMessage: errorMessage
+        });
     }
 );
 

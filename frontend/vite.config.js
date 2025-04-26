@@ -19,4 +19,22 @@ export default defineConfig({
             '@': path.resolve(__dirname, './src'),
         },
     },
+    build: {
+        outDir: 'dist',
+        sourcemap: false,
+        // Добавляем настройку для статических ресурсов
+        assetsDir: 'assets',
+        // Настройка для обработки ошибок сборки
+        chunkSizeWarningLimit: 1600,
+        // Оптимизация для Netlify
+        rollupOptions: {
+            output: {
+                manualChunks: {
+                    vendor: ['react', 'react-dom', 'react-router-dom'],
+                    mui: ['@mui/material', '@mui/icons-material'],
+                    charts: ['chart.js', 'react-chartjs-2', 'recharts']
+                }
+            }
+        }
+    }
 }); 
