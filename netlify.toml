@@ -1,0 +1,26 @@
+[build]
+  base = "/"
+  publish = "static/"
+  command = """
+    cd frontend && npm install && npm run build && 
+    cd .. && 
+    mkdir -p static && 
+    cp -r frontend/dist/* static/
+  """
+
+[build.environment]
+  NODE_VERSION = "16"
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/api/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild" 

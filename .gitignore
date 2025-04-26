@@ -1,0 +1,42 @@
+# Виртуальное окружение Python
+venv/
+env/
+.env
+
+# Файлы кэша Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Дистрибутив и сборки
+dist/
+build/
+*.egg-info/
+
+# Локальная база данных
+*.db
+*.sqlite
+*.sqlite3
+
+# Логи
+logs/
+*.log
+
+# Файлы среды разработки
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Фронтенд
+node_modules/
+coverage/
+.coverage
+frontend/dist/
+static/
+
+# Временные файлы
+tmp/
+temp/ 

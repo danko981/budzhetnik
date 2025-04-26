@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    container_name: budgetnik-app
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=False
+      - SECRET_KEY=your-secret-key-change-in-production
+      - DATABASE_URL=sqlite:///app.db
+      - PORT=8000
+    volumes:
+      - app-data:/app/data
+  # Раскомментируйте для использования базы данных MySQL/PostgreSQL
+  # db:
+  #   image: mysql:8.0
+  #   container_name: budgetnik-db
+  #   ports:
+  #     - "3306:3306"
+  #   environment:
+  #     - MYSQL_ROOT_PASSWORD=root-password
+  #     - MYSQL_DATABASE=budgetnik
+  #     - MYSQL_USER=budgetnik_user
+  #     - MYSQL_PASSWORD=budgetnik_password
+  #   volumes:
+  #     - db-data:/var/lib/mysql
+
+volumes:
+  app-data: # db-data: 
