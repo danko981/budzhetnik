@@ -20,6 +20,12 @@ try {
     return;
 }
 
+// Тестовые учетные данные для локальной разработки
+const TEST_USERS = [
+    { id: 1, username: 'demo', password: 'demo123', email: 'demo@example.com' },
+    { id: 2, username: 'test', password: 'test123', email: 'test@example.com' }
+];
+
 // Прокси-функция для API
 exports.handler = async function (event, context) {
     // URL API сервера
@@ -37,6 +43,90 @@ exports.handler = async function (event, context) {
             },
             body: ''
         };
+    }
+
+    // Особая обработка для логина - имитация API сервера для тестов
+    if ((event.path.endsWith('/auth/login') || event.path.endsWith('/api/v1/auth/login')) && event.httpMethod === 'POST') {
+        console.log('Processing login request directly in the function');
+        console.log('Request path:', event.path);
+
+        try {
+            const body = JSON.parse(event.body);
+
+            // Проверка обязательных полей
+            if (!body.username || !body.password) {
+                return {
+                    statusCode: 400,
+                    body: JSON.stringify({
+                        message: 'Необходимо указать имя пользователя и пароль'
+                    }),
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*',
+                        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
+                        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+                    }
+                };
+            }
+
+            // Поиск пользователя в тестовых данных
+            const user = TEST_USERS.find(
+                u => u.username === body.username && u.password === body.password
+            );
+
+            if (!user) {
+                return {
+                    statusCode: 401,
+                    body: JSON.stringify({
+                        message: 'Неверное имя пользователя или пароль'
+                    }),
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*',
+                        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
+                        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+                    }
+                };
+            }
+
+            // Генерация фиктивного токена
+            const dummyToken = `test.${Buffer.from(JSON.stringify({ id: user.id, username: user.username })).toString('base64')}.token`;
+
+            // Имитация успешной авторизации
+            return {
+                statusCode: 200,
+                body: JSON.stringify({
+                    message: 'Авторизация успешна',
+                    user: {
+                        id: user.id,
+                        username: user.username,
+                        email: user.email
+                    },
+                    token: dummyToken
+                }),
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
+                    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+                }
+            };
+        } catch (error) {
+            console.error('Error processing login request:', error);
+            return {
+                statusCode: 500,
+                body: JSON.stringify({
+                    message: 'Ошибка при обработке запроса на авторизацию',
+                    error: error.message
+                }),
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
+                    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+                }
+            };
+        }
     }
 
     // Особая обработка для регистрации - имитация API сервера для тестов
@@ -87,6 +177,93 @@ exports.handler = async function (event, context) {
                 statusCode: 500,
                 body: JSON.stringify({
                     message: 'Ошибка при обработке запроса на регистрацию',
+                    error: error.message
+                }),
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
+                    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+                }
+            };
+        }
+    }
+
+    // Особая обработка для получения данных пользователя - имитация API сервера для тестов
+    if ((event.path.endsWith('/auth/me') || event.path.endsWith('/api/v1/auth/me')) && event.httpMethod === 'GET') {
+        console.log('Processing get user info request directly in the function');
+        console.log('Request path:', event.path);
+
+        try {
+            // Проверяем токен
+            const authHeader = event.headers.authorization || '';
+            const token = authHeader.startsWith('Bearer ') ? authHeader.substring(7) : null;
+
+            if (!token || !token.startsWith('test.')) {
+                return {
+                    statusCode: 401,
+                    body: JSON.stringify({
+                        message: 'Требуется авторизация'
+                    }),
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*',
+                        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
+                        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+                    }
+                };
+            }
+
+            // Пытаемся расшифровать токен для получения информации о пользователе
+            try {
+                const tokenParts = token.split('.');
+                if (tokenParts.length !== 3) {
+                    throw new Error('Invalid token format');
+                }
+
+                const payload = JSON.parse(Buffer.from(tokenParts[1], 'base64').toString());
+                const userId = payload.id;
+
+                // Находим пользователя по ID
+                const user = TEST_USERS.find(u => u.id === userId);
+                if (!user) {
+                    throw new Error('User not found');
+                }
+
+                return {
+                    statusCode: 200,
+                    body: JSON.stringify({
+                        id: user.id,
+                        username: user.username,
+                        email: user.email
+                    }),
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*',
+                        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
+                        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+                    }
+                };
+            } catch (error) {
+                return {
+                    statusCode: 401,
+                    body: JSON.stringify({
+                        message: 'Недействительный токен'
+                    }),
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*',
+                        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
+                        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+                    }
+                };
+            }
+        } catch (error) {
+            console.error('Error processing user info request:', error);
+            return {
+                statusCode: 500,
+                body: JSON.stringify({
+                    message: 'Ошибка при обработке запроса на получение данных пользователя',
                     error: error.message
                 }),
                 headers: {

@@ -48,31 +48,17 @@ export const AuthProvider = ({ children }) => {
             setError(null);
             setLoading(true);
 
-            // Проверяем тестовые учетные данные в режиме разработки
-            if (process.env.NODE_ENV === 'development') {
-                const testUser = TEST_USERS.find(
-                    user => user.username === credentials.username && user.password === credentials.password
-                );
-
-                if (testUser) {
-                    console.log('Using test credentials for development');
-                    // Создаем фиктивный JWT токен для тестирования
-                    const dummyToken = `test.${btoa(JSON.stringify({ id: testUser.id, username: testUser.username }))}.token`;
-                    localStorage.setItem('token', dummyToken);
-                    setUser({ id: testUser.id, username: testUser.username, email: testUser.email });
-                    setIsAuthenticated(true);
-                    setLoading(false);
-                    return { success: true };
-                }
-            }
-
-            // Делаем реальный запрос к API
+            // Делаем запрос к API
             const response = await api.post('/api/v1/auth/login', credentials);
 
-            localStorage.setItem('token', response.data.token);
-            setUser(response.data.user);
-            setIsAuthenticated(true);
-            return { success: true };
+            if (response.data && response.data.token) {
+                localStorage.setItem('token', response.data.token);
+                setUser(response.data.user);
+                setIsAuthenticated(true);
+                return { success: true };
+            } else {
+                throw new Error('Токен не был получен от сервера');
+            }
         } catch (error) {
             console.error('Login error:', error);
 

@@ -3,11 +3,11 @@ import axios from 'axios';
 // Определяем базовый URL API в зависимости от окружения
 const getBaseURL = () => {
     if (process.env.NODE_ENV === 'development') {
-        // В режиме разработки фронтенд на порту 3000, бэкенд на 8000
+        // В режиме разработки используем локальный API на порту 8000
         return 'http://localhost:8000';
     }
     // В продакшене используем Netlify Functions
-    return '';
+    return '/.netlify/functions/api';
 };
 
 // Создаем экземпляр axios с настройками по умолчанию
@@ -34,6 +34,14 @@ api.interceptors.request.use(
             config.params['_t'] = new Date().getTime();
         }
 
+        // Логирование запросов в режиме разработки
+        if (process.env.NODE_ENV === 'development') {
+            console.log(`API Request: ${config.method.toUpperCase()} ${config.baseURL}${config.url}`);
+            if (config.data) {
+                console.log('Request data:', config.data);
+            }
+        }
+
         return config;
     },
     (error) => Promise.reject(error)
@@ -41,7 +49,14 @@ api.interceptors.request.use(
 
 // Перехватчик для обработки ответов
 api.interceptors.response.use(
-    (response) => response,
+    (response) => {
+        // Логирование ответов в режиме разработки
+        if (process.env.NODE_ENV === 'development') {
+            console.log(`API Response: ${response.status} ${response.config.url}`);
+            console.log('Response data:', response.data);
+        }
+        return response;
+    },
     (error) => {
         // Логирование ошибок
         console.error('API Error:', error.message);
