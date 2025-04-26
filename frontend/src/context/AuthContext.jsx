@@ -26,7 +26,7 @@ export const AuthProvider = ({ children }) => {
             }
 
             try {
-                const response = await api.get('/auth/me');
+                const response = await api.get('/api/v1/auth/me');
                 if (response.data) {
                     setUser(response.data);
                     setIsAuthenticated(true);
@@ -67,7 +67,7 @@ export const AuthProvider = ({ children }) => {
             }
 
             // Делаем реальный запрос к API
-            const response = await api.post('/auth/login', credentials);
+            const response = await api.post('/api/v1/auth/login', credentials);
 
             localStorage.setItem('token', response.data.token);
             setUser(response.data.user);
@@ -116,7 +116,7 @@ export const AuthProvider = ({ children }) => {
             }
 
             // Отправляем запрос на регистрацию
-            const response = await api.post('/auth/register', userData);
+            const response = await api.post('/api/v1/auth/register', userData);
             return {
                 success: true,
                 message: 'Регистрация успешна. Теперь вы можете войти.'
@@ -134,6 +134,8 @@ export const AuthProvider = ({ children }) => {
                     errorMessage = 'Пользователь с таким именем уже существует';
                 } else if (error.response.status === 500) {
                     errorMessage = 'Ошибка сервера. Пожалуйста, попробуйте позже';
+                } else if (error.response.status === 404) {
+                    errorMessage = 'Сервис регистрации недоступен. Пожалуйста, попробуйте позже';
                 }
             } else if (error.request) {
                 errorMessage = 'Не удалось связаться с сервером. Проверьте интернет-соединение';

@@ -40,8 +40,9 @@ exports.handler = async function (event, context) {
     }
 
     // Особая обработка для регистрации - имитация API сервера для тестов
-    if (event.path.endsWith('/auth/register') && event.httpMethod === 'POST') {
+    if ((event.path.endsWith('/auth/register') || event.path.endsWith('/api/v1/auth/register')) && event.httpMethod === 'POST') {
         console.log('Processing register request directly in the function');
+        console.log('Request path:', event.path);
 
         try {
             const body = JSON.parse(event.body);
