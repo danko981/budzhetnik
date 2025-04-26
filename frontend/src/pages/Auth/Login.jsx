@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import {
     Avatar,
@@ -13,6 +13,8 @@ import {
     InputAdornment,
     IconButton,
     Container,
+    Divider,
+    Chip,
 } from '@mui/material';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import VisibilityIcon from '@mui/icons-material/Visibility';
@@ -21,7 +23,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 
 const Login = () => {
-    const { login, error } = useAuth();
+    const { login, error, isAuthenticated, loading, testUsers } = useAuth();
     const { theme } = useTheme();
     const navigate = useNavigate();
 
@@ -32,36 +34,63 @@ const Login = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [loginError, setLoginError] = useState('');
 
+    // Перенаправление, если пользователь уже аутентифицирован
+    useEffect(() => {
+        if (isAuthenticated) {
+            navigate('/');
+        }
+    }, [isAuthenticated, navigate]);
+
     // Обработчик отправки формы
     const handleSubmit = async (e) => {
         e.preventDefault();
 
+        // Сбрасываем ошибки
+        setLoginError('');
+
+        // Проверка на пустые поля
         if (!username.trim() || !password) {
             setLoginError('Пожалуйста, заполните все поля');
             return;
         }
 
         setIsLoading(true);
-        setLoginError('');
 
         try {
-            const success = await login({ username, password });
-            if (success) {
-                navigate('/');
-            } else {
-                setLoginError(error || 'Неверное имя пользователя или пароль');
+            const result = await login({ username, password });
+
+            if (!result.success) {
+                setLoginError(result.message || 'Не удалось войти в систему');
             }
+            // Если успешно, useEffect перенаправит на главную
         } catch (err) {
-            setLoginError('Произошла ошибка при входе в систему');
+            setLoginError('Произошла непредвиденная ошибка');
             console.error('Login error:', err);
         } finally {
             setIsLoading(false);
         }
     };
 
+    // Переключатель видимости пароля
     const handleTogglePasswordVisibility = () => {
         setShowPassword(!showPassword);
     };
+
+    // Быстрый вход тестовым пользователем
+    const loginAsTestUser = (testUser) => {
+        setUsername(testUser.username);
+        setPassword(testUser.password);
+    };
+
+    if (loading) {
+        return (
+            <Container maxWidth="sm">
+                <Box sx={{ p: 3, mt: 8, textAlign: 'center' }}>
+                    <Typography>Загрузка...</Typography>
+                </Box>
+            </Container>
+        );
+    }
 
     return (
         <Container maxWidth="sm">
@@ -86,6 +115,7 @@ const Login = () => {
                             value={username}
                             onChange={(e) => setUsername(e.target.value)}
                             autoFocus
+                            disabled={isLoading}
                         />
                         <TextField
                             margin="normal"
@@ -97,6 +127,7 @@ const Login = () => {
                             id="password"
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
+                            disabled={isLoading}
                             InputProps={{
                                 endAdornment: (
                                     <InputAdornment position="end">
@@ -126,6 +157,27 @@ const Login = () => {
                             </Link>
                         </Box>
                     </Box>
+
+                    {process.env.NODE_ENV === 'development' && (
+                        <>
+                            <Divider sx={{ my: 3 }}>
+                                <Chip label="Тестовые пользователи" />
+                            </Divider>
+                            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                                {testUsers.map((user, index) => (
+                                    <Button
+                                        key={index}
+                                        variant="outlined"
+                                        size="small"
+                                        onClick={() => loginAsTestUser(user)}
+                                        sx={{ justifyContent: 'flex-start' }}
+                                    >
+                                        {user.username} / {user.password}
+                                    </Button>
+                                ))}
+                            </Box>
+                        </>
+                    )}
                 </Paper>
             </Box>
         </Container>

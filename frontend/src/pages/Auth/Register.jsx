@@ -4,7 +4,7 @@ import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 
 const Register = () => {
-    const { register, error } = useAuth();
+    const { register, error, testUsers } = useAuth();
     const navigate = useNavigate();
 
     // Состояния для формы
@@ -14,14 +14,37 @@ const Register = () => {
     const [confirmPassword, setConfirmPassword] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [registerError, setRegisterError] = useState('');
+    const [success, setSuccess] = useState('');
+
+    // Валидация email
+    const validateEmail = (email) => {
+        const re = /^(([^<>()[\]\\.,;:\s@"]+(\.[^<>()[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
+        return re.test(String(email).toLowerCase());
+    };
 
     // Обработчик отправки формы
     const handleSubmit = async (e) => {
         e.preventDefault();
 
+        // Сбрасываем ошибки и успешные сообщения
+        setRegisterError('');
+        setSuccess('');
+
         // Проверка заполнения полей
         if (!username.trim() || !email.trim() || !password || !confirmPassword) {
             setRegisterError('Пожалуйста, заполните все поля');
+            return;
+        }
+
+        // Проверка валидности email
+        if (!validateEmail(email)) {
+            setRegisterError('Пожалуйста, введите корректный email');
+            return;
+        }
+
+        // Проверка длины пароля
+        if (password.length < 6) {
+            setRegisterError('Пароль должен содержать минимум 6 символов');
             return;
         }
 
@@ -31,8 +54,13 @@ const Register = () => {
             return;
         }
 
+        // Проверка на конфликт с тестовыми учетными данными
+        if (testUsers && testUsers.some(user => user.username === username)) {
+            setRegisterError('Пользователь с таким именем уже существует');
+            return;
+        }
+
         setIsLoading(true);
-        setRegisterError('');
 
         try {
             const result = await register({
@@ -42,13 +70,23 @@ const Register = () => {
             });
 
             if (result.success) {
-                navigate('/login');
+                setSuccess(result.message || 'Регистрация успешна. Теперь вы можете войти.');
+                // Очищаем форму
+                setUsername('');
+                setEmail('');
+                setPassword('');
+                setConfirmPassword('');
+
+                // Перенаправляем на страницу входа через 2 секунды
+                setTimeout(() => {
+                    navigate('/login');
+                }, 2000);
             } else {
                 setRegisterError(result.message || 'Ошибка при регистрации');
             }
         } catch (err) {
-            setRegisterError('Произошла ошибка при регистрации');
             console.error('Registration error:', err);
+            setRegisterError('Произошла ошибка при регистрации. Пожалуйста, попробуйте позже.');
         } finally {
             setIsLoading(false);
         }
@@ -66,6 +104,11 @@ const Register = () => {
                             {registerError}
                         </Alert>
                     )}
+                    {success && (
+                        <Alert severity="success" sx={{ mb: 2 }}>
+                            {success}
+                        </Alert>
+                    )}
                     <Box component="form" onSubmit={handleSubmit} sx={{ mt: 1 }}>
                         <TextField
                             margin="normal"
@@ -77,6 +120,7 @@ const Register = () => {
                             value={username}
                             onChange={(e) => setUsername(e.target.value)}
                             autoFocus
+                            disabled={isLoading}
                         />
                         <TextField
                             margin="normal"
@@ -88,6 +132,7 @@ const Register = () => {
                             type="email"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
+                            disabled={isLoading}
                         />
                         <TextField
                             margin="normal"
@@ -99,6 +144,8 @@ const Register = () => {
                             id="password"
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
+                            disabled={isLoading}
+                            helperText="Минимум 6 символов"
                         />
                         <TextField
                             margin="normal"
@@ -110,6 +157,7 @@ const Register = () => {
                             id="confirmPassword"
                             value={confirmPassword}
                             onChange={(e) => setConfirmPassword(e.target.value)}
+                            disabled={isLoading}
                         />
                         <Button
                             type="submit"
@@ -125,6 +173,14 @@ const Register = () => {
                                 Уже есть аккаунт? Войти
                             </Link>
                         </Box>
+
+                        {process.env.NODE_ENV === 'development' && (
+                            <Box mt={3} p={2} bgcolor="grey.100" borderRadius={1}>
+                                <Typography variant="caption" color="textSecondary">
+                                    Тестовые учетные данные: demo/demo123, test/test123
+                                </Typography>
+                            </Box>
+                        )}
                     </Box>
                 </Paper>
             </Box>
