@@ -1,4 +1,24 @@
-const axios = require('axios');
+let axios;
+try {
+    axios = require('axios');
+} catch (error) {
+    console.error('Error loading axios module:', error.message);
+    // Отправляем ошибку, если модуль не загружен
+    exports.handler = async function (event, context) {
+        return {
+            statusCode: 500,
+            body: JSON.stringify({
+                message: 'API Server Error: dependency not loaded',
+                error: 'axios module could not be loaded'
+            }),
+            headers: {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+            }
+        };
+    };
+    return;
+}
 
 // Прокси-функция для API
 exports.handler = async function (event, context) {

@@ -1,7 +1,7 @@
 [build]
   base = "/"
   publish = "frontend/dist"
-  command = "cd frontend && npm install && npm run build"
+  command = "./netlify-build.sh"
 
 [build.environment]
   NODE_VERSION = "18"
@@ -18,4 +18,7 @@
 
 [functions]
   directory = "netlify/functions"
-  node_bundler = "esbuild" 
+  node_bundler = "esbuild"
+  
+[[plugins]]
+  package = "@netlify/plugin-functions-install-core" 
