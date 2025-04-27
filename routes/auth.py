@@ -13,6 +13,12 @@ users = [
         'username': 'demo',
         'password': 'demo123',  # В реальном приложении будут хешированные пароли
         'email': 'demo@example.com'
+    },
+    {
+        'id': 2,
+        'username': 'test',
+        'password': 'test123',
+        'email': 'test@example.com'
     }
 ]
 
@@ -30,7 +36,7 @@ def login():
     user = next((u for u in users if u['username'] == data['username']), None)
 
     if not user or user['password'] != data['password']:
-        return jsonify({'message': 'Неверные учетные данные'}), 401
+        return jsonify({'message': 'Неверное имя пользователя или пароль'}), 401
 
     # Создаем JWT-токен
     token = jwt.encode({
@@ -40,12 +46,13 @@ def login():
     }, os.environ.get('SECRET_KEY', 'dev-secret-key'))
 
     return jsonify({
-        'access_token': token,
+        'token': token,
         'user': {
             'id': user['id'],
             'username': user['username'],
             'email': user['email']
-        }
+        },
+        'message': 'Авторизация успешна'
     })
 
 # Маршрут для регистрации

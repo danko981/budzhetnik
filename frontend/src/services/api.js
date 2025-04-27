@@ -4,6 +4,7 @@ import axios from 'axios';
 const getBaseURL = () => {
     if (process.env.NODE_ENV === 'development') {
         // В режиме разработки используем локальный API на порту 8000
+        // Без префикса /api/v1, т.к. бэкенд уже содержит этот префикс
         return 'http://localhost:8000';
     }
     // В продакшене используем Netlify Functions
