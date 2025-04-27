@@ -1,5 +1,7 @@
 from routes.calculator import calculator_routes
 from routes.auth import auth_routes
+from routes.categories import categories_routes
+from routes.budgets import budgets_routes
 from flask import Flask, send_from_directory, jsonify, request
 from flask_cors import CORS
 import os
@@ -18,16 +20,14 @@ app.config['DEBUG'] = os.environ.get('DEBUG', 'False').lower() == 'true'
 
 # Импорт API-маршрутов
 # from routes.transactions import transactions_routes
-# from routes.categories import categories_routes
-# from routes.budgets import budgets_routes
 # from routes.reports import reports_routes
 
 # Регистрация маршрутов
 app.register_blueprint(auth_routes, url_prefix='/api/v1/auth')
 app.register_blueprint(calculator_routes, url_prefix='/api/v1/calculator')
+app.register_blueprint(categories_routes, url_prefix='/api/v1/categories')
+app.register_blueprint(budgets_routes, url_prefix='/api/v1/budgets')
 # app.register_blueprint(transactions_routes, url_prefix='/api/v1/transactions')
-# app.register_blueprint(categories_routes, url_prefix='/api/v1/categories')
-# app.register_blueprint(budgets_routes, url_prefix='/api/v1/budgets')
 # app.register_blueprint(reports_routes, url_prefix='/api/v1/reports')
 
 # API статус

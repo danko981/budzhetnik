@@ -21,11 +21,11 @@ import CalculateIcon from '@mui/icons-material/Calculate';
 import HelpIcon from '@mui/icons-material/Help';
 
 // Ширина боковой панели
-const drawerWidth = 240;
+const drawerWidth = 200;
 
 // Элементы меню
 const menuItems = [
-    { text: 'Дашборд', path: '/', icon: <DashboardIcon /> },
+    { text: 'Главная', path: '/', icon: <DashboardIcon /> },
     { text: 'Транзакции', path: '/transactions', icon: <MonetizationOnIcon /> },
     { text: 'Категории', path: '/categories', icon: <CategoryIcon /> },
     { text: 'Бюджеты', path: '/budgets', icon: <AccountBalanceWalletIcon /> },
@@ -72,6 +72,7 @@ const Sidebar = ({ mobileOpen, onClose }) => {
                                     color: location.pathname === item.path
                                         ? theme.palette.primary.main
                                         : 'inherit',
+                                    minWidth: '40px',
                                 }}
                             >
                                 {item.icon}
@@ -92,7 +93,13 @@ const Sidebar = ({ mobileOpen, onClose }) => {
                                 if (mobileOpen) onClose();
                             }}
                         >
-                            <ListItemIcon>{item.icon}</ListItemIcon>
+                            <ListItemIcon
+                                sx={{
+                                    minWidth: '40px',
+                                }}
+                            >
+                                {item.icon}
+                            </ListItemIcon>
                             <ListItemText primary={item.text} />
                         </ListItemButton>
                     </ListItem>

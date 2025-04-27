@@ -1,55 +1,43 @@
 import React, { useState } from 'react';
 import { Outlet } from 'react-router-dom';
-import { Box, useMediaQuery, CssBaseline } from '@mui/material';
+import { Box, Toolbar, useMediaQuery } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
-import Sidebar from '../Sidebar/Sidebar';
-import Header from '../Header/Header';
+import Header from './Header';
+import Sidebar from './Sidebar';
+
+// Ширина боковой панели (должна совпадать с Sidebar.jsx)
+const drawerWidth = 200;
 
 const Layout = () => {
+    const [mobileOpen, setMobileOpen] = useState(false);
     const theme = useTheme();
-    const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-    const [sidebarOpen, setSidebarOpen] = useState(!isMobile);
+    const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
-    const handleToggleSidebar = () => {
-        setSidebarOpen(!sidebarOpen);
+    const handleDrawerToggle = () => {
+        setMobileOpen(!mobileOpen);
     };
 
     return (
         <Box sx={{ display: 'flex', minHeight: '100vh' }}>
-            <CssBaseline />
-            <Sidebar open={sidebarOpen} onClose={handleToggleSidebar} />
+            {/* Заголовок */}
+            <Header onDrawerToggle={handleDrawerToggle} />
 
+            {/* Боковая панель */}
+            <Sidebar mobileOpen={mobileOpen} onClose={handleDrawerToggle} />
+
+            {/* Основное содержимое */}
             <Box
                 component="main"
                 sx={{
                     flexGrow: 1,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    minHeight: '100vh',
-                    width: { xs: '100%', md: `calc(100% - ${sidebarOpen ? 240 : 0}px)` },
-                    transition: theme.transitions.create(['margin', 'width'], {
-                        easing: theme.transitions.easing.easeOut,
-                        duration: theme.transitions.duration.enteringScreen,
-                    }),
-                    ml: { xs: 0, md: sidebarOpen ? '240px' : 0 },
+                    width: { xs: '100%', sm: `calc(100% - ${drawerWidth}px)` },
+                    ml: { xs: 0, sm: `${drawerWidth}px` },
+                    p: { xs: 2, sm: 3 },
+                    backgroundColor: theme.palette.background.default,
                 }}
             >
-                <Header onToggleSidebar={handleToggleSidebar} sidebarOpen={sidebarOpen} />
-
-                <Box
-                    sx={{
-                        flexGrow: 1,
-                        p: 3,
-                        bgcolor: theme.palette.background.default,
-                        overflow: 'auto',
-                        transition: theme.transitions.create('padding', {
-                            easing: theme.transitions.easing.easeOut,
-                            duration: theme.transitions.duration.enteringScreen,
-                        }),
-                    }}
-                >
-                    <Outlet />
-                </Box>
+                <Toolbar /> {/* Отступ для заголовка */}
+                <Outlet />
             </Box>
         </Box>
     );
