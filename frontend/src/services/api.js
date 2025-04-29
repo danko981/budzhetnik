@@ -1,19 +1,14 @@
 import axios from 'axios';
 
-// Определяем базовый URL API в зависимости от окружения
-const getBaseURL = () => {
-    if (process.env.NODE_ENV === 'development') {
-        // В режиме разработки используем локальный API на порту 8000
-        // Без префикса /api/v1, т.к. бэкенд уже содержит этот префикс
-        return 'http://localhost:8000';
-    }
-    // В продакшене используем Netlify Functions
-    return '/.netlify/functions/api';
-};
+const API_BASE_URL =
+    import.meta.env.VITE_API_URL ||
+    (process.env.NODE_ENV === 'development'
+        ? 'http://localhost:8000/api/v1'
+        : 'https://api.budzhetnik.ru/api/v1');
 
 // Создаем экземпляр axios с настройками по умолчанию
 export const api = axios.create({
-    baseURL: getBaseURL(),
+    baseURL: API_BASE_URL,
     headers: {
         'Content-Type': 'application/json',
     },
