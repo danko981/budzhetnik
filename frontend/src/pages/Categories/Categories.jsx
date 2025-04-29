@@ -40,6 +40,7 @@ import {
     Bookmark as SubcategoryIcon
 } from '@mui/icons-material';
 import { categoriesAPI } from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
 
 // Цвета для категорий
 const CATEGORY_COLORS = [
@@ -75,6 +76,7 @@ const Categories = () => {
     const [expandedCategories, setExpandedCategories] = useState({});
     const [subcategoryDialogOpen, setSubcategoryDialogOpen] = useState(false);
     const [parentCategory, setParentCategory] = useState(null);
+    const { user } = useAuth();
 
     // Загрузка категорий
     const fetchCategories = async () => {
@@ -194,7 +196,7 @@ const Categories = () => {
         setLoading(true);
         setError(null);
         try {
-            const categoryData = { ...categoryForm };
+            const categoryData = { ...categoryForm, user_id: user?.id };
 
             if (isEditing) {
                 await categoriesAPI.update(currentCategoryId, categoryData);
