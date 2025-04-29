@@ -77,9 +77,27 @@ const Login = () => {
     };
 
     // Быстрый вход тестовым пользователем
-    const loginAsTestUser = (testUser) => {
+    const loginAsTestUser = async (testUser) => {
         setUsername(testUser.username);
         setPassword(testUser.password);
+
+        // Автоматический вход после выбора тестового пользователя
+        setIsLoading(true);
+        try {
+            const result = await login({
+                username: testUser.username,
+                password: testUser.password
+            });
+
+            if (!result.success) {
+                setLoginError(result.message || 'Не удалось войти тестовым пользователем');
+            }
+        } catch (err) {
+            setLoginError('Произошла ошибка при входе тестовым пользователем');
+            console.error('Test login error:', err);
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     if (loading) {
