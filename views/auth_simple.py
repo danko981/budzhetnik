@@ -1,9 +1,10 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 import jwt
 import datetime
 import os
 import json
 import logging
+from functools import wraps
 
 # Создаем Blueprint для авторизации
 auth_bp = Blueprint('auth', __name__)
@@ -15,21 +16,75 @@ USERS_FILE = os.path.join(os.path.dirname(
 # Проверяем наличие директории для данных
 os.makedirs(os.path.dirname(USERS_FILE), exist_ok=True)
 
-# Функция для загрузки пользователей
+# Настройка логирования
+logging.basicConfig(level=logging.INFO,
+                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger('auth_simple')
+
+# Декоратор для добавления CORS-заголовков
+
+
+def add_cors_headers(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        response = f(*args, **kwargs)
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers',
+                             'Content-Type,Authorization')
+        response.headers.add('Access-Control-Allow-Methods',
+                             'GET,PUT,POST,DELETE,OPTIONS')
+        return response
+    return decorated_function
+
+
+# Загрузка пользователей с кэшированием
+_users_cache = None
+_last_load_time = None
 
 
 def load_users():
-    try:
-        if os.path.exists(USERS_FILE):
-            with open(USERS_FILE, 'r') as file:
-                return json.load(file)
-        else:
-            # Если файл не существует, создаем его с тестовыми пользователями
-            initial_users = [
+    global _users_cache, _last_load_time
+    current_time = datetime.datetime.now()
+
+    # Если кэш пуст или прошло более 5 минут с последней загрузки
+    if _users_cache is None or _last_load_time is None or (current_time - _last_load_time).seconds > 300:
+        try:
+            if os.path.exists(USERS_FILE):
+                with open(USERS_FILE, 'r') as file:
+                    _users_cache = json.load(file)
+                    _last_load_time = current_time
+                    logger.info(
+                        f"Пользователи загружены из файла: {USERS_FILE}")
+                    return _users_cache
+            else:
+                # Если файл не существует, создаем его с тестовыми пользователями
+                initial_users = [
+                    {
+                        'id': 1,
+                        'username': 'demo',
+                        'password': 'demo123',  # В реальном приложении будут хешированные пароли
+                        'email': 'demo@example.com'
+                    },
+                    {
+                        'id': 2,
+                        'username': 'test',
+                        'password': 'test123',
+                        'email': 'test@example.com'
+                    }
+                ]
+                save_users(initial_users)
+                _users_cache = initial_users
+                _last_load_time = current_time
+                logger.info("Создан файл с тестовыми пользователями")
+                return _users_cache
+        except Exception as e:
+            logger.error(f"Ошибка при чтении файла пользователей: {e}")
+            # Возвращаем тестовых пользователей в случае ошибки
+            fallback_users = [
                 {
                     'id': 1,
                     'username': 'demo',
-                    'password': 'demo123',  # В реальном приложении будут хешированные пароли
+                    'password': 'demo123',
                     'email': 'demo@example.com'
                 },
                 {
@@ -39,49 +94,49 @@ def load_users():
                     'email': 'test@example.com'
                 }
             ]
-            save_users(initial_users)
-            return initial_users
-    except Exception as e:
-        logging.error(f"Ошибка при чтении файла пользователей: {e}")
-        # Возвращаем тестовых пользователей в случае ошибки
-        return [
-            {
-                'id': 1,
-                'username': 'demo',
-                'password': 'demo123',
-                'email': 'demo@example.com'
-            },
-            {
-                'id': 2,
-                'username': 'test',
-                'password': 'test123',
-                'email': 'test@example.com'
-            }
-        ]
-
-# Функция для сохранения пользователей
+            _users_cache = fallback_users
+            _last_load_time = current_time
+            return fallback_users
+    else:
+        # Возвращаем кэшированные данные
+        return _users_cache
 
 
 def save_users(users):
+    global _users_cache, _last_load_time
     try:
         # Сначала проверяем, существует ли директория
         os.makedirs(os.path.dirname(USERS_FILE), exist_ok=True)
 
         with open(USERS_FILE, 'w') as file:
             json.dump(users, file, ensure_ascii=False, indent=4)
+
+        # Обновляем кэш
+        _users_cache = users
+        _last_load_time = datetime.datetime.now()
+        logger.info(f"Пользователи сохранены в файл: {USERS_FILE}")
         return True
     except Exception as e:
-        logging.error(f"Ошибка при сохранении файла пользователей: {e}")
+        logger.error(f"Ошибка при сохранении файла пользователей: {e}")
         return False
 
 
-@auth_bp.route('/login', methods=['POST'])
+@auth_bp.route('/login', methods=['POST', 'OPTIONS'])
+@add_cors_headers
 def login():
     """Вход пользователя и получение токена"""
+    # Обработка предварительных запросов OPTIONS
+    if request.method == 'OPTIONS':
+        response = jsonify({'status': 'ok'})
+        return response
+
     try:
         data = request.get_json()
+        logger.info(
+            f"Получен запрос на авторизацию пользователя: {data.get('username', 'unknown')}")
 
         if not data or not data.get('username') or not data.get('password'):
+            logger.warning("Неполные данные для авторизации")
             return jsonify({'message': 'Необходимо указать имя пользователя и пароль'}), 400
 
         # Загружаем пользователей
@@ -92,6 +147,8 @@ def login():
             (u for u in users if u['username'] == data['username']), None)
 
         if not user or user['password'] != data['password']:
+            logger.warning(
+                f"Неудачная попытка авторизации для пользователя: {data['username']}")
             return jsonify({'message': 'Неверное имя пользователя или пароль'}), 401
 
         # Создаем JWT-токен
@@ -99,7 +156,7 @@ def login():
             'sub': user['id'],
             'username': user['username'],
             'exp': datetime.datetime.utcnow() + datetime.timedelta(days=1)
-        }, os.environ.get('SECRET_KEY', 'dev-secret-key'))
+        }, current_app.config.get('SECRET_KEY', 'dev-secret-key'))
 
         response_data = {
             'token': token,
@@ -112,25 +169,35 @@ def login():
         }
 
         # Логирование успешной авторизации
-        logging.info(f"Успешная авторизация пользователя: {user['username']}")
+        logger.info(f"Успешная авторизация пользователя: {user['username']}")
 
         return jsonify(response_data)
 
     except Exception as e:
-        logging.error(f"Ошибка при авторизации: {e}")
-        return jsonify({'message': 'Ошибка авторизации: внутренняя ошибка сервера'}), 500
+        logger.error(f"Ошибка при авторизации: {e}", exc_info=True)
+        return jsonify({'message': 'Ошибка авторизации: внутренняя ошибка сервера', 'error': str(e)}), 500
 
 
-@auth_bp.route('/register', methods=['POST'])
+@auth_bp.route('/register', methods=['POST', 'OPTIONS'])
+@add_cors_headers
 def register():
     """Регистрация нового пользователя"""
+    # Обработка предварительных запросов OPTIONS
+    if request.method == 'OPTIONS':
+        response = jsonify({'status': 'ok'})
+        return response
+
     try:
         data = request.get_json()
+        logger.info(
+            f"Получен запрос на регистрацию пользователя: {data.get('username', 'unknown')}")
 
         if not data:
+            logger.warning("Получен пустой запрос на регистрацию")
             return jsonify({'message': 'Отсутствуют данные запроса'}), 400
 
         if not data.get('username') or not data.get('password') or not data.get('email'):
+            logger.warning("Неполные данные для регистрации")
             return jsonify({'message': 'Необходимо указать имя пользователя, пароль и email'}), 400
 
         # Загружаем существующих пользователей
@@ -138,11 +205,16 @@ def register():
 
         # Проверяем, существует ли пользователь с таким именем
         if any(u['username'] == data['username'] for u in users):
+            logger.warning(
+                f"Попытка регистрации существующего пользователя: {data['username']}")
             return jsonify({'message': 'Пользователь с таким именем уже существует'}), 400
+
+        # Определяем следующий ID
+        next_id = max([u['id'] for u in users], default=0) + 1
 
         # Создаем нового пользователя
         new_user = {
-            'id': len(users) + 1,
+            'id': next_id,
             'username': data['username'],
             # В реальном приложении пароль будет хешироваться
             'password': data['password'],
@@ -160,7 +232,7 @@ def register():
                 'sub': new_user['id'],
                 'username': new_user['username'],
                 'exp': datetime.datetime.utcnow() + datetime.timedelta(days=1)
-            }, os.environ.get('SECRET_KEY', 'dev-secret-key'))
+            }, current_app.config.get('SECRET_KEY', 'dev-secret-key'))
 
             response_data = {
                 'token': token,
@@ -173,33 +245,44 @@ def register():
             }
 
             # Логирование успешной регистрации
-            logging.info(
+            logger.info(
                 f"Зарегистрирован новый пользователь: {new_user['username']}")
 
             return jsonify(response_data), 201
         else:
+            logger.error(
+                f"Ошибка при сохранении данных нового пользователя: {data['username']}")
             return jsonify({'message': 'Ошибка при регистрации пользователя'}), 500
 
     except Exception as e:
-        logging.error(f"Ошибка при регистрации пользователя: {e}")
-        return jsonify({'message': 'Ошибка регистрации: внутренняя ошибка сервера'}), 500
+        logger.error(
+            f"Ошибка при регистрации пользователя: {e}", exc_info=True)
+        return jsonify({'message': 'Ошибка регистрации: внутренняя ошибка сервера', 'error': str(e)}), 500
 
 
-@auth_bp.route('/me', methods=['GET'])
+@auth_bp.route('/me', methods=['GET', 'OPTIONS'])
+@add_cors_headers
 def get_current_user():
     """Получение данных текущего пользователя"""
+    # Обработка предварительных запросов OPTIONS
+    if request.method == 'OPTIONS':
+        response = jsonify({'status': 'ok'})
+        return response
+
     try:
         # Получаем токен из заголовка Authorization
         auth_header = request.headers.get('Authorization')
 
         if not auth_header or not auth_header.startswith('Bearer '):
+            logger.warning(
+                "Попытка доступа к данным пользователя без токена авторизации")
             return jsonify({'message': 'Отсутствует или неверный токен авторизации'}), 401
 
         token = auth_header.split(' ')[1]
 
         try:
             # Декодируем токен
-            payload = jwt.decode(token, os.environ.get(
+            payload = jwt.decode(token, current_app.config.get(
                 'SECRET_KEY', 'dev-secret-key'), algorithms=['HS256'])
             user_id = payload['sub']
 
@@ -208,8 +291,10 @@ def get_current_user():
             user = next((u for u in users if u['id'] == user_id), None)
 
             if not user:
+                logger.warning(f"Пользователь с ID {user_id} не найден")
                 return jsonify({'message': 'Пользователь не найден'}), 404
 
+            logger.info(f"Запрошены данные пользователя: {user['username']}")
             return jsonify({
                 'id': user['id'],
                 'username': user['username'],
@@ -217,36 +302,49 @@ def get_current_user():
             })
 
         except jwt.ExpiredSignatureError:
+            logger.warning("Истекший токен авторизации")
             return jsonify({'message': 'Срок действия токена истек'}), 401
-        except jwt.InvalidTokenError:
+        except jwt.InvalidTokenError as e:
+            logger.warning(f"Недействительный токен: {e}")
             return jsonify({'message': 'Неверный токен'}), 401
 
     except Exception as e:
-        logging.error(f"Ошибка при получении данных пользователя: {e}")
-        return jsonify({'message': 'Внутренняя ошибка сервера'}), 500
+        logger.error(
+            f"Ошибка при получении данных пользователя: {e}", exc_info=True)
+        return jsonify({'message': 'Внутренняя ошибка сервера', 'error': str(e)}), 500
 
 
-@auth_bp.route('/update', methods=['PUT'])
+@auth_bp.route('/update', methods=['PUT', 'OPTIONS'])
+@add_cors_headers
 def update_user():
     """Обновление данных пользователя"""
+    # Обработка предварительных запросов OPTIONS
+    if request.method == 'OPTIONS':
+        response = jsonify({'status': 'ok'})
+        return response
+
     try:
         # Получаем токен из заголовка Authorization
         auth_header = request.headers.get('Authorization')
 
         if not auth_header or not auth_header.startswith('Bearer '):
+            logger.warning(
+                "Попытка обновления данных пользователя без токена авторизации")
             return jsonify({'message': 'Отсутствует или неверный токен авторизации'}), 401
 
         token = auth_header.split(' ')[1]
 
         try:
             # Декодируем токен
-            payload = jwt.decode(token, os.environ.get(
+            payload = jwt.decode(token, current_app.config.get(
                 'SECRET_KEY', 'dev-secret-key'), algorithms=['HS256'])
             user_id = payload['sub']
 
             # Получаем данные для обновления
             data = request.get_json()
             if not data:
+                logger.warning(
+                    "Попытка обновления данных пользователя без данных")
                 return jsonify({'message': 'Нет данных для обновления'}), 400
 
             # Загружаем пользователей
@@ -257,7 +355,12 @@ def update_user():
                                if u['id'] == user_id), None)
 
             if user_index is None:
+                logger.warning(
+                    f"Пользователь с ID {user_id} не найден для обновления")
                 return jsonify({'message': 'Пользователь не найден'}), 404
+
+            logger.info(
+                f"Обновление данных пользователя: {users[user_index]['username']}")
 
             # Обновляем данные пользователя
             if 'email' in data:
@@ -275,13 +378,19 @@ def update_user():
                     'email': users[user_index]['email']
                 })
             else:
+                logger.error(
+                    f"Ошибка при сохранении обновленных данных пользователя: {users[user_index]['username']}")
                 return jsonify({'message': 'Ошибка при обновлении данных пользователя'}), 500
 
         except jwt.ExpiredSignatureError:
+            logger.warning("Истекший токен авторизации при обновлении данных")
             return jsonify({'message': 'Срок действия токена истек'}), 401
-        except jwt.InvalidTokenError:
+        except jwt.InvalidTokenError as e:
+            logger.warning(
+                f"Недействительный токен при обновлении данных: {e}")
             return jsonify({'message': 'Неверный токен'}), 401
 
     except Exception as e:
-        logging.error(f"Ошибка при обновлении данных пользователя: {e}")
-        return jsonify({'message': 'Внутренняя ошибка сервера'}), 500
+        logger.error(
+            f"Ошибка при обновлении данных пользователя: {e}", exc_info=True)
+        return jsonify({'message': 'Внутренняя ошибка сервера', 'error': str(e)}), 500

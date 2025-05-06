@@ -1,7 +1,8 @@
-from flask import Flask, send_from_directory, jsonify, request
+from flask import Flask, send_from_directory, jsonify, request, make_response
 from flask_cors import CORS
 import os
 import logging
+import traceback
 from dotenv import load_dotenv
 from views.auth_simple import auth_bp
 
@@ -14,6 +15,7 @@ logging.basicConfig(
         logging.FileHandler('app.log')
     ]
 )
+logger = logging.getLogger('simple_app')
 
 # Загрузка переменных окружения
 load_dotenv()
@@ -33,6 +35,8 @@ def create_app():
     # Конфигурация
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key')
     app.config['DEBUG'] = os.environ.get('DEBUG', 'True').lower() == 'true'
+    app.config['PROPAGATE_EXCEPTIONS'] = True
+    app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB max upload
 
     # Регистрация Blueprint для авторизации
     app.register_blueprint(auth_bp, url_prefix='/api/v1/auth')
@@ -55,12 +59,36 @@ def create_app():
         else:
             return send_from_directory(app.static_folder, 'index.html')
 
+    # Обработчик CORS preflight запросов
+    @app.route('/api/v1/auth/<path:path>', methods=['OPTIONS'])
+    def handle_auth_options(path):
+        response = make_response()
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers',
+                             'Content-Type,Authorization')
+        response.headers.add('Access-Control-Allow-Methods',
+                             'GET,PUT,POST,DELETE,OPTIONS')
+        return response
+
     # Обработчик ошибки 404
     @app.errorhandler(404)
     def not_found(e):
         if request.path.startswith('/api/'):
             return jsonify({"error": "Resource not found"}), 404
         return send_from_directory(app.static_folder, 'index.html')
+
+    # Обработчик ошибки 500
+    @app.errorhandler(500)
+    def server_error(e):
+        logger.error(
+            f"Внутренняя ошибка сервера: {str(e)}\n{traceback.format_exc()}")
+        return jsonify({"error": "Internal server error", "message": str(e)}), 500
+
+    # Обработчик ошибки таймаута
+    @app.errorhandler(408)
+    def timeout_error(e):
+        logger.error(f"Ошибка таймаута: {str(e)}")
+        return jsonify({"error": "Request timeout", "message": "Запрос занял слишком много времени"}), 408
 
     # Предварительная обработка запросов (для CORS)
     @app.after_request
@@ -70,8 +98,11 @@ def create_app():
                              'Content-Type,Authorization')
         response.headers.add('Access-Control-Allow-Methods',
                              'GET,PUT,POST,DELETE,OPTIONS')
+        # Кеширование preflight запросов на 1 час
+        response.headers.add('Access-Control-Max-Age', '3600')
         return response
 
+    logger.info("Приложение Budgetnik (упрощенная версия) успешно создано")
     return app
 
 
@@ -79,4 +110,5 @@ def create_app():
 if __name__ == '__main__':
     app = create_app()
     port = int(os.environ.get('PORT', 8000))
-    app.run(host='0.0.0.0', port=port, debug=True)
+    logger.info(f"Запуск приложения на порту {port}")
+    app.run(host='0.0.0.0', port=port, debug=True, threaded=True)

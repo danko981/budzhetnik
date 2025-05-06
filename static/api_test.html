@@ -61,6 +61,11 @@
             background-color: #45a049;
         }
 
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+
         .result {
             background-color: #f9f9f9;
             border: 1px solid #ddd;
@@ -69,6 +74,7 @@
             margin-top: 10px;
             white-space: pre-wrap;
             overflow-x: auto;
+            min-height: 50px;
         }
 
         .tabs {
@@ -97,11 +103,57 @@
         .tab-content.active {
             display: block;
         }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255, 255, 255, .3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s ease-in-out infinite;
+            margin-left: 10px;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .error {
+            color: #f44336;
+            font-weight: bold;
+        }
+
+        .success {
+            color: #4CAF50;
+            font-weight: bold;
+        }
+
+        .api-status {
+            text-align: center;
+            padding: 10px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+        }
+
+        .api-status.online {
+            background-color: #e8f5e9;
+            color: #2e7d32;
+        }
+
+        .api-status.offline {
+            background-color: #ffebee;
+            color: #c62828;
+        }
     </style>
 </head>
 
 <body>
     <h1>Тестирование API Budgetnik</h1>
+
+    <div id="apiStatus" class="api-status">Проверка статуса API...</div>
 
     <div class="tabs">
         <button class="tab active" onclick="openTab(event, 'login')">Вход</button>
@@ -121,7 +173,7 @@
                 <label for="loginPassword">Пароль:</label>
                 <input type="password" id="loginPassword" placeholder="Введите пароль" value="demo123">
             </div>
-            <button onclick="login()">Войти</button>
+            <button id="loginButton" onclick="login()">Войти</button>
             <div id="loginResult" class="result"></div>
         </div>
     </div>
@@ -141,7 +193,7 @@
                 <label for="regEmail">Email:</label>
                 <input type="email" id="regEmail" placeholder="Введите email">
             </div>
-            <button onclick="register()">Зарегистрироваться</button>
+            <button id="registerButton" onclick="register()">Зарегистрироваться</button>
             <div id="registerResult" class="result"></div>
         </div>
     </div>
@@ -154,7 +206,7 @@
                 <label for="profileToken">Токен:</label>
                 <input type="text" id="profileToken" placeholder="Вставьте полученный токен">
             </div>
-            <button onclick="getProfile()">Получить данные профиля</button>
+            <button id="profileButton" onclick="getProfile()">Получить данные профиля</button>
             <div id="profileResult" class="result"></div>
         </div>
     </div>
@@ -171,15 +223,56 @@
                 <label for="updateEmail">Новый Email:</label>
                 <input type="email" id="updateEmail" placeholder="Введите новый email">
             </div>
-            <button onclick="updateProfile()">Обновить данные</button>
+            <button id="updateButton" onclick="updateProfile()">Обновить данные</button>
             <div id="updateResult" class="result"></div>
         </div>
     </div>
 
     <script>
         // Загрузка конфигурации из файла environment.js
-        const apiBaseUrl = window.apiConfig ? window.apiConfig.authEndpoint : 'http://localhost:8000/api/v1/auth';
+        let apiBaseUrl = 'http://localhost:8000/api/v1/auth';
+        let apiTimeout = 60000; // 60 секунд по умолчанию
 
+        // При загрузке страницы проверяем статус API
+        document.addEventListener('DOMContentLoaded', function () {
+            // Если доступен файл environment.js
+            if (window.apiConfig) {
+                apiBaseUrl = window.apiConfig.authEndpoint;
+                apiTimeout = window.apiConfig.timeout || 60000;
+                console.log("Конфигурация API загружена:", { apiBaseUrl, apiTimeout });
+            }
+
+            checkApiStatus();
+        });
+
+        // Проверка статуса API
+        async function checkApiStatus() {
+            const statusElement = document.getElementById('apiStatus');
+            statusElement.textContent = "Проверка статуса API...";
+            statusElement.className = "api-status";
+
+            try {
+                const response = await fetch('http://localhost:8000/api/status', {
+                    method: 'GET',
+                    cache: 'no-cache',
+                    timeout: apiTimeout
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    statusElement.textContent = `API статус: ${data.status} - ${data.message}`;
+                    statusElement.className = "api-status online";
+                } else {
+                    statusElement.textContent = "API недоступен: " + response.statusText;
+                    statusElement.className = "api-status offline";
+                }
+            } catch (error) {
+                statusElement.textContent = "Ошибка соединения с API: " + error.message;
+                statusElement.className = "api-status offline";
+            }
+        }
+
+        // Переключение вкладок
         function openTab(evt, tabName) {
             const tabContents = document.getElementsByClassName("tab-content");
             for (let i = 0; i < tabContents.length; i++) {
@@ -195,120 +288,237 @@
             evt.currentTarget.classList.add("active");
         }
 
+        // Добавление индикатора загрузки
+        function setLoading(buttonId, isLoading) {
+            const button = document.getElementById(buttonId);
+
+            if (isLoading) {
+                button.disabled = true;
+                if (!button.querySelector('.loading')) {
+                    const loader = document.createElement('span');
+                    loader.className = 'loading';
+                    button.appendChild(loader);
+                }
+            } else {
+                button.disabled = false;
+                const loader = button.querySelector('.loading');
+                if (loader) {
+                    button.removeChild(loader);
+                }
+            }
+        }
+
+        // Форматирование результата
+        function formatResult(resultElement, data, isError = false) {
+            if (isError) {
+                resultElement.innerHTML = `<div class="error">${data}</div>`;
+            } else {
+                resultElement.innerHTML = `<div class="success">Успешно!</div><pre>${JSON.stringify(data, null, 2)}</pre>`;
+            }
+        }
+
+        // Авторизация
         async function login() {
             const username = document.getElementById("loginUsername").value;
             const password = document.getElementById("loginPassword").value;
+            const resultElement = document.getElementById("loginResult");
 
             if (!username || !password) {
-                document.getElementById("loginResult").textContent = "Пожалуйста, заполните все поля!";
+                formatResult(resultElement, "Пожалуйста, заполните все поля!", true);
                 return;
             }
 
+            setLoading("loginButton", true);
+            resultElement.textContent = "Выполняется запрос...";
+
             try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), apiTimeout);
+
                 const response = await fetch(`${apiBaseUrl}/login`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ username, password })
+                    body: JSON.stringify({ username, password }),
+                    signal: controller.signal
                 });
 
-                const data = await response.json();
-                document.getElementById("loginResult").textContent = JSON.stringify(data, null, 2);
+                clearTimeout(timeoutId);
 
-                // Если получен токен, автоматически заполним его для других вкладок
-                if (data.token) {
-                    document.getElementById("profileToken").value = data.token;
-                    document.getElementById("updateToken").value = data.token;
+                const data = await response.json();
+
+                if (!response.ok) {
+                    formatResult(resultElement, `Ошибка: ${data.message || response.statusText}`, true);
+                } else {
+                    formatResult(resultElement, data);
+
+                    // Если получен токен, автоматически заполним его для других вкладок
+                    if (data.token) {
+                        document.getElementById("profileToken").value = data.token;
+                        document.getElementById("updateToken").value = data.token;
+                    }
                 }
             } catch (error) {
-                document.getElementById("loginResult").textContent = "Ошибка: " + error.message;
+                if (error.name === 'AbortError') {
+                    formatResult(resultElement, "Ошибка: Превышено время ожидания ответа от сервера", true);
+                } else {
+                    formatResult(resultElement, "Ошибка: " + error.message, true);
+                }
+            } finally {
+                setLoading("loginButton", false);
             }
         }
 
+        // Регистрация
         async function register() {
             const username = document.getElementById("regUsername").value;
             const password = document.getElementById("regPassword").value;
             const email = document.getElementById("regEmail").value;
+            const resultElement = document.getElementById("registerResult");
 
             if (!username || !password || !email) {
-                document.getElementById("registerResult").textContent = "Пожалуйста, заполните все поля!";
+                formatResult(resultElement, "Пожалуйста, заполните все поля!", true);
                 return;
             }
 
+            setLoading("registerButton", true);
+            resultElement.textContent = "Выполняется запрос...";
+
             try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), apiTimeout);
+
                 const response = await fetch(`${apiBaseUrl}/register`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ username, password, email })
+                    body: JSON.stringify({ username, password, email }),
+                    signal: controller.signal
                 });
 
-                const data = await response.json();
-                document.getElementById("registerResult").textContent = JSON.stringify(data, null, 2);
+                clearTimeout(timeoutId);
 
-                // Если получен токен, автоматически заполним его для других вкладок
-                if (data.token) {
-                    document.getElementById("profileToken").value = data.token;
-                    document.getElementById("updateToken").value = data.token;
+                const data = await response.json();
+
+                if (!response.ok) {
+                    formatResult(resultElement, `Ошибка: ${data.message || response.statusText}`, true);
+                } else {
+                    formatResult(resultElement, data);
+
+                    // Если получен токен, автоматически заполним его для других вкладок
+                    if (data.token) {
+                        document.getElementById("profileToken").value = data.token;
+                        document.getElementById("updateToken").value = data.token;
+                    }
                 }
             } catch (error) {
-                document.getElementById("registerResult").textContent = "Ошибка: " + error.message;
+                if (error.name === 'AbortError') {
+                    formatResult(resultElement, "Ошибка: Превышено время ожидания ответа от сервера", true);
+                } else {
+                    formatResult(resultElement, "Ошибка: " + error.message, true);
+                }
+            } finally {
+                setLoading("registerButton", false);
             }
         }
 
+        // Получение данных профиля
         async function getProfile() {
             const token = document.getElementById("profileToken").value;
+            const resultElement = document.getElementById("profileResult");
 
             if (!token) {
-                document.getElementById("profileResult").textContent = "Необходим токен авторизации!";
+                formatResult(resultElement, "Необходим токен авторизации!", true);
                 return;
             }
 
+            setLoading("profileButton", true);
+            resultElement.textContent = "Выполняется запрос...";
+
             try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), apiTimeout);
+
                 const response = await fetch(`${apiBaseUrl}/me`, {
                     method: 'GET',
                     headers: {
                         'Authorization': `Bearer ${token}`
-                    }
+                    },
+                    signal: controller.signal
                 });
 
+                clearTimeout(timeoutId);
+
                 const data = await response.json();
-                document.getElementById("profileResult").textContent = JSON.stringify(data, null, 2);
+
+                if (!response.ok) {
+                    formatResult(resultElement, `Ошибка: ${data.message || response.statusText}`, true);
+                } else {
+                    formatResult(resultElement, data);
+                }
             } catch (error) {
-                document.getElementById("profileResult").textContent = "Ошибка: " + error.message;
+                if (error.name === 'AbortError') {
+                    formatResult(resultElement, "Ошибка: Превышено время ожидания ответа от сервера", true);
+                } else {
+                    formatResult(resultElement, "Ошибка: " + error.message, true);
+                }
+            } finally {
+                setLoading("profileButton", false);
             }
         }
 
+        // Обновление профиля
         async function updateProfile() {
             const token = document.getElementById("updateToken").value;
             const email = document.getElementById("updateEmail").value;
+            const resultElement = document.getElementById("updateResult");
 
             if (!token) {
-                document.getElementById("updateResult").textContent = "Необходим токен авторизации!";
+                formatResult(resultElement, "Необходим токен авторизации!", true);
                 return;
             }
 
             if (!email) {
-                document.getElementById("updateResult").textContent = "Введите новый email!";
+                formatResult(resultElement, "Введите новый email!", true);
                 return;
             }
 
+            setLoading("updateButton", true);
+            resultElement.textContent = "Выполняется запрос...";
+
             try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), apiTimeout);
+
                 const response = await fetch(`${apiBaseUrl}/update`, {
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${token}`
                     },
-                    body: JSON.stringify({ email })
+                    body: JSON.stringify({ email }),
+                    signal: controller.signal
                 });
 
+                clearTimeout(timeoutId);
+
                 const data = await response.json();
-                document.getElementById("updateResult").textContent = JSON.stringify(data, null, 2);
+
+                if (!response.ok) {
+                    formatResult(resultElement, `Ошибка: ${data.message || response.statusText}`, true);
+                } else {
+                    formatResult(resultElement, data);
+                }
             } catch (error) {
-                document.getElementById("updateResult").textContent = "Ошибка: " + error.message;
+                if (error.name === 'AbortError') {
+                    formatResult(resultElement, "Ошибка: Превышено время ожидания ответа от сервера", true);
+                } else {
+                    formatResult(resultElement, "Ошибка: " + error.message, true);
+                }
+            } finally {
+                setLoading("updateButton", false);
             }
         }
     </script>
