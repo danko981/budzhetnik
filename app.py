@@ -6,6 +6,7 @@ from flask_marshmallow import Marshmallow
 from flask_jwt_extended import JWTManager
 from flask_restx import Api
 import os
+import logging
 from dotenv import load_dotenv
 
 # Загрузка переменных окружения
@@ -34,29 +35,69 @@ api = Api(
     security='Bearer Auth'
 )
 
+# Настройка логирования
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler('app.log')
+    ]
+)
+logger = logging.getLogger('budgetnik')
 
-def create_app():
+# Настройка JWT колбэков
+
+
+@jwt.user_identity_loader
+def user_identity_lookup(user):
+    return user.id
+
+
+@jwt.user_lookup_loader
+def user_lookup_callback(_jwt_header, jwt_data):
+    from models import User
+    identity = jwt_data["sub"]
+    return User.query.get(identity)
+
+
+@jwt.expired_token_loader
+def expired_token_callback(jwt_header, jwt_payload):
+    return jsonify({"error": "Срок действия токена истек"}), 401
+
+
+@jwt.invalid_token_loader
+def invalid_token_callback(error):
+    return jsonify({"error": "Неверный токен"}), 401
+
+
+@jwt.unauthorized_loader
+def missing_token_callback(error):
+    return jsonify({"error": "Отсутствует токен авторизации"}), 401
+
+
+def create_app(config_name='default'):
     # Создание экземпляра приложения
     app = Flask(__name__, static_folder='static')
 
+    # Конфигурация из объекта config
+    from config import config as app_config
+    app.config.from_object(app_config[config_name])
+
     # Улучшенная настройка CORS
     CORS(app,
-         resources={r"/*": {"origins": "*"}},
+         resources={r"/api/*": {"origins": "*"}},
          supports_credentials=True,
          methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-         allow_headers=["Content-Type", "Authorization", "X-Requested-With"])
+         allow_headers=["Content-Type", "Authorization",
+                        "X-Requested-With", "Cache-Control", "Pragma", "Expires"],
+         expose_headers=['Content-Type', 'Authorization'])
 
-    # Конфигурация
-    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key')
-    app.config['DEBUG'] = os.environ.get('DEBUG', 'False').lower() == 'true'
-    app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get(
-        'DATABASE_URL', 'sqlite:///budgetnik.db')
-    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-    app.config['JWT_SECRET_KEY'] = os.environ.get(
-        'JWT_SECRET_KEY', app.config['SECRET_KEY'])
-
-    # Устанавливаем максимальное время ожидания ответа
+    # Дополнительная конфигурация
     app.config['PROPAGATE_EXCEPTIONS'] = True
+    app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB max upload
+    # Для корректного отображения кириллицы
+    app.config['JSON_AS_ASCII'] = False
 
     # Инициализация компонентов с приложением
     db.init_app(app)
@@ -88,8 +129,13 @@ def create_app():
         return jsonify({
             'status': 'online',
             'message': 'API сервер Budgetnik работает',
-            'version': '1.0.0'
+            'version': '1.1.0'
         })
+
+    # Маршрут для проверки здоровья системы
+    @app.route('/health')
+    def health_check():
+        return {"status": "ok"}
 
     # Маршрут для отдачи статических файлов фронтенда
     @app.route('/', defaults={'path': ''})
@@ -100,23 +146,50 @@ def create_app():
         else:
             return send_from_directory(app.static_folder, 'index.html')
 
+    # Обработчик CORS preflight запросов для всех маршрутов
+    @app.route('/<path:path>', methods=['OPTIONS'])
+    def handle_options(path):
+        response = app.make_response('')
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers',
+                             'Content-Type,Authorization,X-Requested-With,Cache-Control,Pragma,Expires')
+        response.headers.add('Access-Control-Allow-Methods',
+                             'GET,PUT,POST,DELETE,OPTIONS')
+        response.headers.add('Access-Control-Max-Age', '3600')
+        return response
+
     # Обработчик ошибки 404
     @app.errorhandler(404)
     def not_found(e):
         if request.path.startswith('/api/'):
-            return jsonify({"error": "Resource not found"}), 404
+            return jsonify({"error": "Ресурс не найден"}), 404
         return send_from_directory(app.static_folder, 'index.html')
+
+    # Обработчик ошибки 500
+    @app.errorhandler(500)
+    def server_error(e):
+        logger.error(f"Внутренняя ошибка сервера: {str(e)}")
+        return jsonify({"error": "Внутренняя ошибка сервера", "message": str(e)}), 500
+
+    # Обработчик ошибки таймаута
+    @app.errorhandler(408)
+    def timeout_error(e):
+        logger.error(f"Ошибка таймаута: {str(e)}")
+        return jsonify({"error": "Таймаут запроса", "message": "Запрос занял слишком много времени"}), 408
 
     # Предварительная обработка запросов (для CORS)
     @app.after_request
     def after_request(response):
         response.headers.add('Access-Control-Allow-Origin', '*')
         response.headers.add('Access-Control-Allow-Headers',
-                             'Content-Type,Authorization')
+                             'Content-Type,Authorization,X-Requested-With,Cache-Control,Pragma,Expires')
         response.headers.add('Access-Control-Allow-Methods',
                              'GET,PUT,POST,DELETE,OPTIONS')
+        # Кеширование preflight запросов на 1 час
+        response.headers.add('Access-Control-Max-Age', '3600')
         return response
 
+    logger.info("Приложение Budgetnik успешно создано")
     return app
 
 
@@ -124,4 +197,6 @@ def create_app():
 if __name__ == '__main__':
     app = create_app()
     port = int(os.environ.get('PORT', 8000))
-    app.run(host='0.0.0.0', port=port)
+    logger.info(f"Запуск приложения на порту {port}")
+    app.run(host='0.0.0.0', port=port,
+            debug=app.config['DEBUG'], threaded=True)

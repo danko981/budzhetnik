@@ -2,27 +2,21 @@ import logging
 from flask import request, current_app
 # Основные компоненты RESTx
 from flask_restx import Namespace, Resource, fields, reqparse
-from flask_jwt_extended import jwt_required, current_user
-from sqlalchemy.exc import IntegrityError
-# Импортируем для явного отлова, если нужно
-from marshmallow import ValidationError
+from flask_jwt_extended import jwt_required, current_user, get_jwt_identity
 
-from ..models import Category, Transaction, CategoryType
-# Marshmallow схема все еще полезна для валидации
-from ..schemas import CategorySchema
-from .. import db
+from models import CategoryType
+from services.category_service import CategoryService
 
 # Создаем Namespace - аналог Blueprint для RESTx
 ns = Namespace(
     'categories', description='Операции с категориями доходов и расходов')
 
 # --- Модели данных для Swagger (описание входных/выходных данных) ---
-# Используем `api.model` или `ns.model` для определения структуры
 category_model = ns.model('Category', {
     'id': fields.Integer(readonly=True, description='Уникальный идентификатор категории'),
     'name': fields.String(required=True, description='Название категории', example='Продукты'),
-    # Используем Enum поле Flask-RESTx
-    'type': fields.String(required=True, description='Тип категории (доход/расход)', enum=[e.value for e in CategoryType], example='expense')
+    'type': fields.String(required=True, description='Тип категории (доход/расход)', enum=[e.value for e in CategoryType], example='expense'),
+    'user_id': fields.Integer(readonly=True, description='ID владельца категории')
 })
 
 # Модель для создания категории (без id)
@@ -31,14 +25,15 @@ category_input_model = ns.model('CategoryInput', {
     'type': fields.String(required=True, description='Тип категории (доход/расход)', enum=[e.value for e in CategoryType], example='expense')
 })
 
+# Модель ответа с ошибкой
+error_model = ns.model('Error', {
+    'error': fields.String(required=True, description='Сообщение об ошибке')
+})
+
 # --- Парсеры аргументов запроса (для GET списка) ---
 category_list_parser = reqparse.RequestParser()
 category_list_parser.add_argument('type', type=str, choices=[
                                   e.value for e in CategoryType], help='Фильтр по типу категории (income/expense)', location='args')
-
-# --- Marshmallow схемы (для валидации) ---
-category_schema = CategorySchema()
-categories_schema = CategorySchema(many=True)
 
 # --- Ресурсы (обработчики эндпоинтов) ---
 
@@ -49,68 +44,62 @@ class CategoryList(Resource):
 
     @ns.doc('list_categories', description='Получение списка категорий текущего пользователя с фильтрацией по типу.')
     @ns.expect(category_list_parser)  # Описываем ожидаемые GET параметры
-    # Описываем формат успешного ответа (список)
-    @ns.marshal_list_with(category_model)
+    @ns.response(200, 'Успешно', [category_model])
+    @ns.response(401, 'Требуется авторизация')
+    @ns.response(500, 'Внутренняя ошибка сервера', error_model)
     @jwt_required()
     def get(self):
         """Список категорий пользователя"""
-        args = category_list_parser.parse_args()  # Парсим GET аргументы
-        query = Category.query.filter_by(owner=current_user)
+        try:
+            user_id = get_jwt_identity()
+            args = category_list_parser.parse_args()  # Парсим GET аргументы
 
-        category_type_filter = args.get('type')
-        if category_type_filter:
-            # Преобразование строки в Enum безопасно, т.к. parser проверяет choices
-            cat_type_enum = CategoryType(category_type_filter)
-            query = query.filter_by(type=cat_type_enum)
+            type_filter = None
+            if args.get('type'):
+                try:
+                    type_filter = CategoryType(args.get('type'))
+                except ValueError:
+                    return {"error": f"Неверный тип категории"}, 400
 
-        all_categories = query.order_by(Category.name).all()
-        return all_categories  # Flask-RESTx автоматически сериализует с помощью category_model
+            # Используем сервис для получения категорий
+            result, status_code = CategoryService.get_user_categories(
+                user_id, type_filter)
+            return result, status_code
+
+        except Exception as e:
+            current_app.logger.error(
+                f"Ошибка при получении категорий: {str(e)}")
+            return {"error": "Ошибка при получении категорий"}, 500
 
     @ns.doc('create_category', description='Создание новой категории.')
-    # Описываем ожидаемые POST данные и включаем валидацию
     @ns.expect(category_input_model, validate=True)
-    # Описываем формат ответа при успехе (код 201)
-    @ns.marshal_with(category_model, code=201)
-    @ns.response(400, 'Ошибка валидации входных данных')
-    @ns.response(409, 'Категория с таким именем и типом уже существует')
+    @ns.response(201, 'Категория успешно создана', category_model)
+    @ns.response(400, 'Ошибка валидации входных данных', error_model)
     @ns.response(401, 'Требуется авторизация')
+    @ns.response(500, 'Внутренняя ошибка сервера', error_model)
     @jwt_required()
     def post(self):
         """Создать категорию"""
-        # Используем ns.payload для доступа к валидированным данным
-        data = ns.payload
-        # Дополнительная валидация с Marshmallow (если нужна более сложная логика)
-        # try:
-        #     category_schema.load(data) # Проверяем через Marshmallow
-        # except ValidationError as err:
-        #     ns.abort(400, message=err.messages) # Используем ns.abort
-
-        # Преобразуем тип из строки в Enum для модели
         try:
-            data['type'] = CategoryType(data['type'])
-        except ValueError:
-            # Это не должно произойти из-за enum в модели RESTx, но на всякий случай
-            ns.abort(400, message=f"Invalid category type specified.")
+            user_id = get_jwt_identity()
+            data = request.json
 
-        new_category = Category(**data, owner=current_user)
+            if not data or not data.get('name') or not data.get('type'):
+                return {"error": "Необходимо указать имя и тип категории"}, 400
 
-        try:
-            db.session.add(new_category)
-            db.session.commit()
-            current_app.logger.info(
-                f"Category '{new_category.name}' created by user {current_user.id}")
-        except IntegrityError:
-            db.session.rollback()
-            # Используем ns.abort для стандартных ошибок
-            ns.abort(
-                409, message=f"Category with name '{data['name']}' and type '{data['type'].value}' already exists for this user.")
+            # Используем сервис для создания категории
+            result, status_code = CategoryService.create_category(
+                user_id=user_id,
+                name=data['name'],
+                category_type=data['type']
+            )
+
+            return result, status_code
+
         except Exception as e:
-            db.session.rollback()
             current_app.logger.error(
-                f"Error creating category for user {current_user.id}: {e}", exc_info=True)
-            ns.abort(500, message="Could not create category.")
-
-        return new_category, 201  # Возвращаем объект SQLAlchemy, RESTx сериализует
+                f"Ошибка при создании категории: {str(e)}")
+            return {"error": "Внутренняя ошибка сервера"}, 500
 
 
 @ns.route('/<int:category_id>')  # Маршрут для /api/v1/categories/{id}
@@ -121,91 +110,84 @@ class CategoryResource(Resource):
     """Чтение, обновление и удаление конкретной категории."""
 
     @ns.doc('get_category', description='Получение данных одной категории по ID.')
-    @ns.marshal_with(category_model)  # Описываем формат успешного ответа
+    @ns.response(200, 'Успешно', category_model)
+    @ns.response(403, 'Доступ запрещен', error_model)
     @jwt_required()
     def get(self, category_id):
         """Получить категорию по ID"""
-        category = Category.query.filter_by(
-            id=category_id, owner=current_user).first()
-        if not category:
-            ns.abort(404, message="Category not found or access denied.")
-        return category
+        try:
+            user_id = get_jwt_identity()
+
+            # Используем сервис для получения категории с проверкой доступа
+            category, status_code = CategoryService.get_category_with_check(
+                category_id=category_id,
+                user_id=user_id
+            )
+
+            if status_code != 200:
+                return category, status_code
+
+            # Преобразуем результат в словарь
+            return {
+                'id': category.id,
+                'name': category.name,
+                'type': category.type.value,
+                'user_id': category.user_id
+            }, 200
+
+        except Exception as e:
+            current_app.logger.error(
+                f"Ошибка при получении категории {category_id}: {str(e)}")
+            return {"error": "Внутренняя ошибка сервера"}, 500
 
     @ns.doc('update_category', description='Обновление существующей категории.')
-    # Ожидаем модель для ввода, но не все поля обязательны (PUT может быть частичным)
-    # Можно определить другую модель для PUT, если нужно
     @ns.expect(category_input_model)
-    @ns.marshal_with(category_model)  # Формат ответа
-    @ns.response(409, 'Конфликт имени/типа или нельзя изменить тип с транзакциями')
-    @ns.response(400, 'Ошибка валидации')
+    @ns.response(200, 'Категория успешно обновлена', category_model)
+    @ns.response(400, 'Ошибка валидации', error_model)
+    @ns.response(403, 'Доступ запрещен', error_model)
     @jwt_required()
     def put(self, category_id):
         """Обновить категорию"""
-        category = Category.query.filter_by(id=category_id, owner=current_user).first_or_404(
-            description="Category not found or access denied.")
-
-        data = ns.payload
-        # Опционально валидируем через Marshmallow
-        # try:
-        #     category_schema.load(data, partial=True)
-        # except ValidationError as err:
-        #     ns.abort(400, message=err.messages)
-
-        # Обновляем поля, если они переданы
-        original_type = category.type
-        if 'name' in data:
-            category.name = data['name']
-        if 'type' in data:
-            try:
-                new_type = CategoryType(data['type'])
-                if new_type != original_type:
-                    # Проверка на наличие транзакций при смене типа
-                    if category.transactions.first():
-                        ns.abort(
-                            409, message="Cannot change the type of a category that has associated transactions.")
-                    category.type = new_type
-            except ValueError:
-                ns.abort(400, message="Invalid category type specified.")
-
         try:
-            db.session.commit()
-            current_app.logger.info(
-                f"Category {category_id} updated by user {current_user.id}")
-        except IntegrityError:
-            db.session.rollback()
-            ns.abort(
-                409, message=f"Category name '{category.name}' with type '{category.type.value}' conflicts with an existing category.")
-        except Exception as e:
-            db.session.rollback()
-            current_app.logger.error(
-                f"Error updating category {category_id}: {e}", exc_info=True)
-            ns.abort(500, message="Could not update category.")
+            user_id = get_jwt_identity()
+            data = request.json
 
-        return category
+            if not data:
+                return {"error": "Нет данных для обновления"}, 400
+
+            # Используем сервис для обновления категории
+            result, status_code = CategoryService.update_category(
+                category_id=category_id,
+                user_id=user_id,
+                data=data
+            )
+
+            return result, status_code
+
+        except Exception as e:
+            current_app.logger.error(
+                f"Ошибка при обновлении категории {category_id}: {str(e)}")
+            return {"error": "Внутренняя ошибка сервера"}, 500
 
     @ns.doc('delete_category', description='Удаление категории.')
-    @ns.response(204, 'Категория успешно удалена')
-    @ns.response(409, 'Нельзя удалить категорию со связанными транзакциями')
+    @ns.response(200, 'Категория успешно удалена')
+    @ns.response(400, 'Нельзя удалить категорию со связанными транзакциями', error_model)
+    @ns.response(403, 'Доступ запрещен', error_model)
     @jwt_required()
     def delete(self, category_id):
         """Удалить категорию"""
-        category = Category.query.filter_by(id=category_id, owner=current_user).first_or_404(
-            description="Category not found or access denied.")
-
-        # Проверка на связанные транзакции
-        if category.transactions.first():
-            ns.abort(
-                409, message="Cannot delete category with associated transactions. Please reassign or delete transactions first.")
-
         try:
-            db.session.delete(category)
-            db.session.commit()
-            current_app.logger.info(
-                f"Category {category_id} deleted by user {current_user.id}")
-        except Exception as e:
-            db.session.rollback()
-            current_app.logger.error(
-                f"Error deleting category {category_id}: {e}", exc_info=True)
-            ns.abort(500, message="Could not delete category.")
+            user_id = get_jwt_identity()
 
-        return '', 204
+            # Используем сервис для удаления категории
+            result, status_code = CategoryService.delete_category(
+                category_id=category_id,
+                user_id=user_id
+            )
+
+            return result, status_code
+
+        except Exception as e:
+            current_app.logger.error(
+                f"Ошибка при удалении категории {category_id}: {str(e)}")
+            return {"error": "Внутренняя ошибка сервера"}, 500
