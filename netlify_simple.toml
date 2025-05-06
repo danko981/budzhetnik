@@ -1,0 +1,19 @@
+[build]
+  command = "pip install -r requirements.txt && python simple_init_db.py"
+  functions = "functions"
+
+[build.environment]
+  PYTHON_VERSION = "3.9"
+  DEBUG = "false"
+  SECRET_KEY = "netlify-production-key"
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/simple_wsgi:app"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200 
