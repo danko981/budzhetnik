@@ -46,7 +46,7 @@ BACKEND_PID=$!
 
 # Переходим в директорию фронтенда и запускаем его
 if [ -d "frontend" ]; then
-    echo "Запуск фронтенда на порту $FRONTEND_PORT..."
+echo "Запуск фронтенда на порту $FRONTEND_PORT..."
     cd frontend
     
     # Проверяем наличие пакетов node_modules
@@ -57,7 +57,7 @@ if [ -d "frontend" ]; then
     
     # Запускаем dev сервер (предполагаем использование Vite)
     npm run dev &
-    FRONTEND_PID=$!
+FRONTEND_PID=$!
     cd ..
 else
     echo "Директория фронтенда не найдена"
@@ -69,7 +69,7 @@ cleanup() {
     echo "Завершение работы процессов..."
     kill $BACKEND_PID 2>/dev/null
     if [ ! -z "$FRONTEND_PID" ]; then
-        kill $FRONTEND_PID 2>/dev/null
+    kill $FRONTEND_PID 2>/dev/null
     fi
     exit 0
 }
@@ -81,7 +81,7 @@ echo "Приложение запущено в режиме разработки
 echo "Бэкенд: http://localhost:$BACKEND_PORT"
 echo "API Документация: http://localhost:$BACKEND_PORT/api/docs"
 if [ ! -z "$FRONTEND_PID" ]; then
-    echo "Фронтенд: http://localhost:$FRONTEND_PORT"
+echo "Фронтенд: http://localhost:$FRONTEND_PORT"
 fi
 echo "Нажмите Ctrl+C для завершения работы"
 
