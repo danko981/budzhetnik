@@ -141,10 +141,17 @@ def create_app(config_name='default'):
     @app.route('/', defaults={'path': ''})
     @app.route('/<path:path>')
     def serve_react(path):
+        # Проверяем, если запрос начинается с /api
+        if path.startswith('api/'):
+            # 404 для API, которые не найдены
+            return jsonify({"error": "Маршрут API не найден"}), 404
+
+        # Если это реальный файл, возвращаем его
         if path != "" and os.path.exists(os.path.join(app.static_folder, path)):
             return send_from_directory(app.static_folder, path)
-        else:
-            return send_from_directory(app.static_folder, 'index.html')
+
+        # Для всех остальных путей возвращаем index.html (для React Router)
+        return send_from_directory(app.static_folder, 'index.html')
 
     # Обработчик CORS preflight запросов для всех маршрутов
     @app.route('/<path:path>', methods=['OPTIONS'])
