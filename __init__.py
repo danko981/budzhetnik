@@ -10,16 +10,15 @@ from flask_jwt_extended import JWTManager
 from werkzeug.exceptions import HTTPException  # Для стандартных HTTP ошибок
 from marshmallow import ValidationError  # Для ошибок валидации Marshmallow
 from config import config
-from .models import User  # Импортируем User для колбэков JWT
 from flask_cors import CORS  # Импортируем CORS
 
+# Определение глобальных объектов
 db = SQLAlchemy()
 migrate = Migrate()
 ma = Marshmallow()
 jwt = JWTManager()
 
-# Создаем объект Api вместо прямого app
-# Добавим информацию для Swagger UI
+# Создаем объект Api для Swagger UI
 authorizations = {  # Настройка для кнопки Authorize в Swagger UI
     'Bearer Auth': {
         'type': 'apiKey',
@@ -46,6 +45,7 @@ def user_identity_lookup(user):
 
 @jwt.user_lookup_loader
 def user_lookup_callback(_jwt_header, jwt_data):
+    from models import User
     identity = jwt_data["sub"]
     return User.query.get(identity)
 
@@ -86,7 +86,8 @@ def handle_validation_error(error):
 @api.errorhandler(Exception)
 def handle_generic_exception(error):
     """Обработчик непредвиденных ошибок."""
-    # logging.getLogger(__name__).exception("Unhandled Exception")
+    logger = logging.getLogger(__name__)
+    logger.exception("Unhandled Exception")
     # В реальном приложении здесь будет детальное логирование ошибки
     return {'message': 'An internal server error occurred.'}, 500
 # --- Конец обработчиков ошибок ---

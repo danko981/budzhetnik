@@ -7,16 +7,18 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DEBUG=False
+      - FLASK_CONFIG=production
       - SECRET_KEY=your-secret-key-change-in-production
-      - DATABASE_URL=sqlite:///app.db
+      - DATABASE_URL=sqlite:///data/budgetnik.db
       - PORT=8000
     volumes:
       - app-data:/app/data
+      - app-logs:/app/logs
   # Раскомментируйте для использования базы данных MySQL/PostgreSQL
   # db:
   #   image: mysql:8.0
   #   container_name: budgetnik-db
+  #   restart: unless-stopped
   #   ports:
   #     - "3306:3306"
   #   environment:
@@ -26,6 +28,26 @@ services:
   #     - MYSQL_PASSWORD=budgetnik_password
   #   volumes:
   #     - db-data:/var/lib/mysql
+  #   healthcheck:
+  #     test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+
+  # Раскомментируйте для добавления Nginx
+  # nginx:
+  #   image: nginx:latest
+  #   container_name: budgetnik-nginx
+  #   restart: unless-stopped
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./nginx/conf.d:/etc/nginx/conf.d
+  #     - ./nginx/certs:/etc/nginx/certs
+  #   depends_on:
+  #     - app
 
 volumes:
-  app-data: # db-data: 
+  app-data:
+  app-logs: # db-data: 

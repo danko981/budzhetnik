@@ -24,9 +24,16 @@ COPY --from=frontend-builder /app/frontend/dist/ /app/static/
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PORT=8000
+ENV FLASK_CONFIG=production
+
+# Создаем директорию для базы данных и логов
+RUN mkdir -p /app/logs /app/data
+
+# Права на запуск скриптов
+RUN chmod +x /app/init_db.py
 
 # Открываем порт
 EXPOSE 8000
 
-# Запуск приложения
-CMD gunicorn --bind 0.0.0.0:$PORT app:app 
+# Инициализация базы данных и запуск приложения
+CMD python init_db.py && gunicorn --bind 0.0.0.0:$PORT wsgi:app 
