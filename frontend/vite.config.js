@@ -23,19 +23,15 @@ export default defineConfig({
     build: {
         outDir: 'dist',
         sourcemap: false,
-        // Настройка для использования относительных путей
         base: './',
-        // Добавляем настройку для статических ресурсов
         assetsDir: 'assets',
-        // Настройка для обработки ошибок сборки
         chunkSizeWarningLimit: 1600,
-        // Оптимизация для Netlify
         rollupOptions: {
             output: {
                 manualChunks: {
-                    vendor: ['react', 'react-dom', 'react-router-dom'],
-                    mui: ['@mui/material', '@mui/icons-material'],
-                    charts: ['chart.js', 'react-chartjs-2', 'recharts']
+                    vendor: ['react', 'react-dom', 'react-router-dom', 'axios'],
+                    mui: ['@mui/material', '@mui/icons-material', '@mui/x-date-pickers'],
+                    charts: ['recharts', 'chart.js', 'react-chartjs-2']
                 }
             }
         }

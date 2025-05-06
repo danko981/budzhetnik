@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider, CssBaseline } from '@mui/material';
 import { theme } from './theme';
 
@@ -23,6 +23,53 @@ import Settings from './pages/Settings/Settings';
 // Импорт вспомогательных страниц
 import NotFound from './pages/NotFound/NotFound';
 
+// Настраиваем обработчик глобальных ошибок
+class ErrorBoundary extends React.Component {
+    constructor(props) {
+        super(props);
+        this.state = { hasError: false };
+    }
+
+    static getDerivedStateFromError(error) {
+        return { hasError: true };
+    }
+
+    componentDidCatch(error, errorInfo) {
+        console.error("Ошибка в приложении:", error, errorInfo);
+    }
+
+    render() {
+        if (this.state.hasError) {
+            return (
+                <div style={{
+                    padding: '30px',
+                    textAlign: 'center',
+                    color: '#d32f2f',
+                    fontFamily: 'Roboto, sans-serif'
+                }}>
+                    <h1>Что-то пошло не так.</h1>
+                    <p>Попробуйте обновить страницу.</p>
+                    <button
+                        onClick={() => window.location.reload()}
+                        style={{
+                            padding: '10px 20px',
+                            background: '#2E7D32',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: 'pointer'
+                        }}
+                    >
+                        Обновить страницу
+                    </button>
+                </div>
+            );
+        }
+
+        return this.props.children;
+    }
+}
+
 // Функция для проверки авторизации
 const RequireAuth = ({ children }) => {
     const isAuthenticated = localStorage.getItem('token') !== null;
@@ -31,38 +78,40 @@ const RequireAuth = ({ children }) => {
 
 function App() {
     return (
-        <ThemeProvider theme={theme}>
-            <CssBaseline />
-            <BrowserRouter>
-                <Routes>
-                    {/* Публичные маршруты */}
-                    <Route path="/login" element={<Login />} />
-                    <Route path="/register" element={<Register />} />
+        <ErrorBoundary>
+            <ThemeProvider theme={theme}>
+                <CssBaseline />
+                <HashRouter>
+                    <Routes>
+                        {/* Публичные маршруты */}
+                        <Route path="/login" element={<Login />} />
+                        <Route path="/register" element={<Register />} />
 
-                    {/* Защищенные маршруты */}
-                    <Route
-                        path="/"
-                        element={
-                            <RequireAuth>
-                                <Layout />
-                            </RequireAuth>
-                        }
-                    >
-                        <Route index element={<Dashboard />} />
-                        <Route path="transactions" element={<Transactions />} />
-                        <Route path="categories" element={<Categories />} />
-                        <Route path="budgets" element={<Budgets />} />
-                        <Route path="reports" element={<Reports />} />
-                        <Route path="calculator" element={<Calculator />} />
-                        <Route path="profile" element={<Profile />} />
-                        <Route path="settings" element={<Settings />} />
-                    </Route>
+                        {/* Защищенные маршруты */}
+                        <Route
+                            path="/"
+                            element={
+                                <RequireAuth>
+                                    <Layout />
+                                </RequireAuth>
+                            }
+                        >
+                            <Route index element={<Dashboard />} />
+                            <Route path="transactions" element={<Transactions />} />
+                            <Route path="categories" element={<Categories />} />
+                            <Route path="budgets" element={<Budgets />} />
+                            <Route path="reports" element={<Reports />} />
+                            <Route path="calculator" element={<Calculator />} />
+                            <Route path="profile" element={<Profile />} />
+                            <Route path="settings" element={<Settings />} />
+                        </Route>
 
-                    {/* Страница 404 */}
-                    <Route path="*" element={<NotFound />} />
-                </Routes>
-            </BrowserRouter>
-        </ThemeProvider>
+                        {/* Страница 404 */}
+                        <Route path="*" element={<NotFound />} />
+                    </Routes>
+                </HashRouter>
+            </ThemeProvider>
+        </ErrorBoundary>
     );
 }
 

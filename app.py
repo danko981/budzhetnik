@@ -78,7 +78,9 @@ def missing_token_callback(error):
 
 def create_app(config_name='default'):
     # Создание экземпляра приложения
-    app = Flask(__name__, static_folder='static')
+    app = Flask(__name__,
+                static_folder='static',
+                static_url_path='')  # Важное изменение: пустой путь для статики
 
     # Конфигурация из объекта config
     from config import config as app_config
@@ -105,9 +107,6 @@ def create_app(config_name='default'):
     ma.init_app(app)
     jwt.init_app(app)
     api.init_app(app, doc='/api/docs')
-
-    # Настройка корректной обработки статических файлов
-    app.static_url_path = ''  # Пустой URL-путь для статических файлов
 
     # Регистрация всех пространств имен API
     from views.auth_restx import ns as auth_ns
@@ -140,6 +139,16 @@ def create_app(config_name='default'):
     def health_check():
         return {"status": "ok"}
 
+    # Специальный маршрут для assets
+    @app.route('/assets/<path:filename>')
+    def serve_assets(filename):
+        return send_from_directory(os.path.join(app.static_folder, 'assets'), filename)
+
+    # Маршрут для favicon
+    @app.route('/favicon.svg')
+    def serve_favicon():
+        return send_from_directory(app.static_folder, 'favicon.svg')
+
     # Маршрут для отдачи статических файлов фронтенда
     @app.route('/', defaults={'path': ''})
     @app.route('/<path:path>')
@@ -156,18 +165,6 @@ def create_app(config_name='default'):
         # Для всех остальных путей возвращаем index.html (для React Router)
         return send_from_directory(app.static_folder, 'index.html')
 
-    # Обработчик CORS preflight запросов для всех маршрутов
-    @app.route('/<path:path>', methods=['OPTIONS'])
-    def handle_options(path):
-        response = app.make_response('')
-        response.headers.add('Access-Control-Allow-Origin', '*')
-        response.headers.add('Access-Control-Allow-Headers',
-                             'Content-Type,Authorization,X-Requested-With,Cache-Control,Pragma,Expires')
-        response.headers.add('Access-Control-Allow-Methods',
-                             'GET,PUT,POST,DELETE,OPTIONS')
-        response.headers.add('Access-Control-Max-Age', '3600')
-        return response
-
     # Обработчик ошибки 404
     @app.errorhandler(404)
     def not_found(e):
@@ -180,24 +177,6 @@ def create_app(config_name='default'):
     def server_error(e):
         logger.error(f"Внутренняя ошибка сервера: {str(e)}")
         return jsonify({"error": "Внутренняя ошибка сервера", "message": str(e)}), 500
-
-    # Обработчик ошибки таймаута
-    @app.errorhandler(408)
-    def timeout_error(e):
-        logger.error(f"Ошибка таймаута: {str(e)}")
-        return jsonify({"error": "Таймаут запроса", "message": "Запрос занял слишком много времени"}), 408
-
-    # Предварительная обработка запросов (для CORS)
-    @app.after_request
-    def after_request(response):
-        response.headers.add('Access-Control-Allow-Origin', '*')
-        response.headers.add('Access-Control-Allow-Headers',
-                             'Content-Type,Authorization,X-Requested-With,Cache-Control,Pragma,Expires')
-        response.headers.add('Access-Control-Allow-Methods',
-                             'GET,PUT,POST,DELETE,OPTIONS')
-        # Кеширование preflight запросов на 1 час
-        response.headers.add('Access-Control-Max-Age', '3600')
-        return response
 
     logger.info("Приложение Budgetnik успешно создано")
     return app

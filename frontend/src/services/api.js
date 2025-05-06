@@ -3,8 +3,8 @@ import axios from 'axios';
 const API_BASE_URL =
     import.meta.env.VITE_API_URL ||
     (process.env.NODE_ENV === 'development'
-        ? 'http://localhost:8000/api/v1'
-        : 'https://api.budzhetnik.ru/api/v1');
+        ? 'http://localhost:8000'
+        : 'https://api.budzhetnik.ru');
 
 // Создаем экземпляр axios с настройками по умолчанию
 export const api = axios.create({
@@ -19,7 +19,8 @@ export const api = axios.create({
 // Перехватчик для добавления токена к запросам
 api.interceptors.request.use(
     (config) => {
-        const token = localStorage.getItem('token');
+        // Пробуем сначала получить access_token (новый формат), затем token (старый формат)
+        const token = localStorage.getItem('access_token') || localStorage.getItem('token');
         if (token) {
             config.headers.Authorization = `Bearer ${token}`;
         }
@@ -60,6 +61,9 @@ api.interceptors.response.use(
         // Если ошибка 401 (неавторизованный) и не endpoint авторизации
         if (error.response && error.response.status === 401 &&
             !error.config.url.includes('/auth/login')) {
+            // Очищаем все токены
+            localStorage.removeItem('access_token');
+            localStorage.removeItem('refresh_token');
             localStorage.removeItem('token');
             window.location.href = '/login';
         }
@@ -67,6 +71,7 @@ api.interceptors.response.use(
         // Формирование понятного сообщения об ошибке
         const errorMessage =
             error.response?.data?.message ||
+            error.response?.data?.error ||
             error.message ||
             'Произошла ошибка при обращении к серверу';
 

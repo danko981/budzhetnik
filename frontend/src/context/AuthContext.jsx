@@ -19,7 +19,8 @@ export const AuthProvider = ({ children }) => {
     // Проверка наличия токена при загрузке
     useEffect(() => {
         const checkToken = async () => {
-            const token = localStorage.getItem('token');
+            // Пробуем сначала получить access_token (новый формат), затем token (старый формат)
+            const token = localStorage.getItem('access_token') || localStorage.getItem('token');
             if (!token) {
                 setLoading(false);
                 return;
@@ -32,6 +33,9 @@ export const AuthProvider = ({ children }) => {
                     setIsAuthenticated(true);
                 }
             } catch (err) {
+                // Удаляем оба формата токенов при ошибке
+                localStorage.removeItem('access_token');
+                localStorage.removeItem('refresh_token');
                 localStorage.removeItem('token');
                 console.error('Error verifying token:', err);
             } finally {
@@ -51,9 +55,30 @@ export const AuthProvider = ({ children }) => {
             // Делаем запрос к API
             const response = await api.post('/api/v1/auth/login', credentials);
 
-            if (response.data && response.data.token) {
-                localStorage.setItem('token', response.data.token);
-                setUser(response.data.user);
+            console.log('Login response:', response.data); // Для диагностики
+
+            // Проверяем наличие access_token (новый формат) или token (старый формат)
+            if (response.data && (response.data.access_token || response.data.token)) {
+                // Сохраняем токены по новому формату
+                if (response.data.access_token) {
+                    localStorage.setItem('access_token', response.data.access_token);
+
+                    // Если есть refresh_token, тоже сохраняем
+                    if (response.data.refresh_token) {
+                        localStorage.setItem('refresh_token', response.data.refresh_token);
+                    }
+                }
+                // Для совместимости со старым форматом
+                else if (response.data.token) {
+                    localStorage.setItem('token', response.data.token);
+                    localStorage.setItem('access_token', response.data.token); // Для совместимости с новым кодом
+                }
+
+                // Сохраняем данные пользователя
+                if (response.data.user) {
+                    setUser(response.data.user);
+                }
+
                 setIsAuthenticated(true);
                 return { success: true };
             } else {
@@ -136,7 +161,9 @@ export const AuthProvider = ({ children }) => {
 
     // Функция для выхода пользователя
     const logout = () => {
-        localStorage.removeItem('token');
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
+        localStorage.removeItem('token'); // Удаляем и старый формат для совместимости
         setUser(null);
         setIsAuthenticated(false);
     };
