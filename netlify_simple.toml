@@ -6,6 +6,7 @@
   PYTHON_VERSION = "3.9"
   DEBUG = "false"
   SECRET_KEY = "netlify-production-key"
+  JWT_SECRET_KEY = "jwt-netlify-secure-key"
 
 [[redirects]]
   from = "/api/*"
@@ -16,4 +17,8 @@
 [[redirects]]
   from = "/*"
   to = "/index.html"
-  status = 200 
+  status = 200
+
+[functions]
+  external_node_modules = ["encoding"]
+  node_bundler = "esbuild" 

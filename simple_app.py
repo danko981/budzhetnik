@@ -30,13 +30,22 @@ def create_app():
          resources={r"/*": {"origins": "*"}},
          supports_credentials=True,
          methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-         allow_headers=["Content-Type", "Authorization", "X-Requested-With"])
+         allow_headers=["Content-Type", "Authorization",
+                        "X-Requested-With", "Cache-Control", "Pragma", "Expires"],
+         expose_headers=['Content-Type', 'Authorization'],
+         max_age=3600)
 
     # Конфигурация
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key')
     app.config['DEBUG'] = os.environ.get('DEBUG', 'True').lower() == 'true'
     app.config['PROPAGATE_EXCEPTIONS'] = True
     app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB max upload
+    # Чтобы кириллица отображалась корректно
+    app.config['JSON_AS_ASCII'] = False
+
+    # Установка JWT секретного ключа
+    app.config['JWT_SECRET_KEY'] = os.environ.get(
+        'JWT_SECRET_KEY', 'jwt-secret-key')
 
     # Регистрация Blueprint для авторизации
     app.register_blueprint(auth_bp, url_prefix='/api/v1/auth')
@@ -65,7 +74,7 @@ def create_app():
         response = make_response()
         response.headers.add('Access-Control-Allow-Origin', '*')
         response.headers.add('Access-Control-Allow-Headers',
-                             'Content-Type,Authorization')
+                             'Content-Type,Authorization,X-Requested-With,Cache-Control,Pragma,Expires')
         response.headers.add('Access-Control-Allow-Methods',
                              'GET,PUT,POST,DELETE,OPTIONS')
         response.headers.add('Access-Control-Max-Age', '3600')
@@ -97,11 +106,12 @@ def create_app():
     def after_request(response):
         response.headers.add('Access-Control-Allow-Origin', '*')
         response.headers.add('Access-Control-Allow-Headers',
-                             'Content-Type,Authorization')
+                             'Content-Type,Authorization,X-Requested-With,Cache-Control,Pragma,Expires')
         response.headers.add('Access-Control-Allow-Methods',
                              'GET,PUT,POST,DELETE,OPTIONS')
         # Кеширование preflight запросов на 1 час
         response.headers.add('Access-Control-Max-Age', '3600')
+        response.headers.add('Content-Type', 'application/json; charset=utf-8')
         return response
 
     logger.info("Приложение Budgetnik (упрощенная версия) успешно создано")

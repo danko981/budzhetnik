@@ -230,15 +230,16 @@
 
     <script>
         // Загрузка конфигурации из файла environment.js
-        let apiBaseUrl = 'http://localhost:8000/api/v1/auth';
-        let apiTimeout = 60000; // 60 секунд по умолчанию
+        let apiBaseUrl = '/api/v1/auth';
+        let apiStatusUrl = '/api/status';
+        let apiTimeout = 120000; // 120 секунд по умолчанию
 
         // При загрузке страницы проверяем статус API
         document.addEventListener('DOMContentLoaded', function () {
             // Если доступен файл environment.js
             if (window.apiConfig) {
                 apiBaseUrl = window.apiConfig.authEndpoint;
-                apiTimeout = window.apiConfig.timeout || 60000;
+                apiTimeout = window.apiConfig.timeout || 120000;
                 console.log("Конфигурация API загружена:", { apiBaseUrl, apiTimeout });
             }
 
@@ -252,11 +253,21 @@
             statusElement.className = "api-status";
 
             try {
-                const response = await fetch('http://localhost:8000/api/status', {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), apiTimeout);
+
+                const response = await fetch(apiStatusUrl, {
                     method: 'GET',
                     cache: 'no-cache',
-                    timeout: apiTimeout
+                    signal: controller.signal,
+                    headers: {
+                        'Cache-Control': 'no-cache',
+                        'Pragma': 'no-cache',
+                        'Expires': '0'
+                    }
                 });
+
+                clearTimeout(timeoutId);
 
                 if (response.ok) {
                     const data = await response.json();

@@ -27,35 +27,59 @@ logger = logging.getLogger('auth_simple')
 def add_cors_headers(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        response = f(*args, **kwargs)
+        # Предварительная обработка OPTIONS запросов
+        if request.method == 'OPTIONS':
+            resp = make_response()
+            resp.headers.add('Access-Control-Allow-Origin', '*')
+            resp.headers.add('Access-Control-Allow-Headers',
+                             'Content-Type,Authorization')
+            resp.headers.add('Access-Control-Allow-Methods',
+                             'GET,PUT,POST,DELETE,OPTIONS')
+            resp.headers.add('Access-Control-Max-Age', '3600')
+            resp.status_code = 200
+            return resp
 
-        # Обработка случая, когда response - это кортеж (данные, код состояния)
-        if isinstance(response, tuple):
-            if len(response) == 2:
-                data, status_code = response
-                # Проверяем, что data не является объектом Response
-                if hasattr(data, 'headers'):
-                    # Если это уже объект Response, просто добавляем заголовки
-                    resp = data
+        try:
+            response = f(*args, **kwargs)
+
+            # Обработка случая, когда response - это кортеж (данные, код состояния)
+            if isinstance(response, tuple):
+                if len(response) == 2:
+                    data, status_code = response
+                    # Проверяем, что data не является объектом Response
+                    if hasattr(data, 'headers'):
+                        # Если это уже объект Response, просто добавляем заголовки
+                        resp = data
+                    else:
+                        # Создаем объект Response из данных
+                        resp = make_response(jsonify(data), status_code)
+                else:
+                    resp = make_response(response)
+            else:
+                # Если это уже объект Response
+                if hasattr(response, 'headers'):
+                    resp = response
                 else:
                     # Создаем объект Response из данных
-                    resp = make_response(jsonify(data), status_code)
-            else:
-                resp = make_response(response)
-        else:
-            # Если это уже объект Response
-            if hasattr(response, 'headers'):
-                resp = response
-            else:
-                # Создаем объект Response из данных
-                resp = make_response(jsonify(response))
+                    resp = make_response(jsonify(response))
 
-        resp.headers.add('Access-Control-Allow-Origin', '*')
-        resp.headers.add('Access-Control-Allow-Headers',
-                         'Content-Type,Authorization')
-        resp.headers.add('Access-Control-Allow-Methods',
-                         'GET,PUT,POST,DELETE,OPTIONS')
-        return resp
+            resp.headers.add('Access-Control-Allow-Origin', '*')
+            resp.headers.add('Access-Control-Allow-Headers',
+                             'Content-Type,Authorization')
+            resp.headers.add('Access-Control-Allow-Methods',
+                             'GET,PUT,POST,DELETE,OPTIONS')
+            resp.headers.add('Access-Control-Max-Age', '3600')
+            return resp
+        except Exception as e:
+            logger.error(f"Ошибка в CORS-декораторе: {e}", exc_info=True)
+            error_response = make_response(
+                jsonify({"message": f"Внутренняя ошибка сервера: {str(e)}"}), 500)
+            error_response.headers.add('Access-Control-Allow-Origin', '*')
+            error_response.headers.add(
+                'Access-Control-Allow-Headers', 'Content-Type,Authorization')
+            error_response.headers.add(
+                'Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+            return error_response
     return decorated_function
 
 
@@ -147,19 +171,24 @@ def save_users(users):
 @add_cors_headers
 def login():
     """Вход пользователя и получение токена"""
-    # Обработка предварительных запросов OPTIONS
-    if request.method == 'OPTIONS':
-        response = jsonify({'status': 'ok'})
-        return response
-
     try:
+        # Проверяем, что данные пришли в правильном формате
+        if not request.is_json:
+            logger.warning("Получены неверные данные, не JSON формат")
+            return {"message": "Ожидается JSON-формат"}, 400
+
         data = request.get_json()
+
+        if data is None:
+            logger.warning("Получен пустой JSON или неверный формат")
+            return {"message": "Неверный формат данных"}, 400
+
         logger.info(
             f"Получен запрос на авторизацию пользователя: {data.get('username', 'unknown')}")
 
         if not data or not data.get('username') or not data.get('password'):
             logger.warning("Неполные данные для авторизации")
-            return jsonify({'message': 'Необходимо указать имя пользователя и пароль'}), 400
+            return {"message": 'Необходимо указать имя пользователя и пароль'}, 400
 
         # Загружаем пользователей
         users = load_users()
@@ -171,7 +200,7 @@ def login():
         if not user or user['password'] != data['password']:
             logger.warning(
                 f"Неудачная попытка авторизации для пользователя: {data['username']}")
-            return jsonify({'message': 'Неверное имя пользователя или пароль'}), 401
+            return {"message": 'Неверное имя пользователя или пароль'}, 401
 
         # Создаем JWT-токен
         token = jwt.encode({
@@ -193,34 +222,37 @@ def login():
         # Логирование успешной авторизации
         logger.info(f"Успешная авторизация пользователя: {user['username']}")
 
-        return jsonify(response_data)
+        return response_data
 
     except Exception as e:
         logger.error(f"Ошибка при авторизации: {e}", exc_info=True)
-        return jsonify({'message': 'Ошибка авторизации: внутренняя ошибка сервера', 'error': str(e)}), 500
+        return {"message": f'Ошибка авторизации: внутренняя ошибка сервера', "error": str(e)}, 500
 
 
 @auth_bp.route('/register', methods=['POST', 'OPTIONS'])
 @add_cors_headers
 def register():
     """Регистрация нового пользователя"""
-    # Обработка предварительных запросов OPTIONS
-    if request.method == 'OPTIONS':
-        response = jsonify({'status': 'ok'})
-        return response
-
     try:
+        # Проверяем, что данные пришли в правильном формате
+        if not request.is_json:
+            logger.warning(
+                "Получены неверные данные для регистрации, не JSON формат")
+            return {"message": "Ожидается JSON-формат"}, 400
+
         data = request.get_json()
+
+        if data is None:
+            logger.warning(
+                "Получен пустой JSON или неверный формат при регистрации")
+            return {"message": "Неверный формат данных"}, 400
+
         logger.info(
             f"Получен запрос на регистрацию пользователя: {data.get('username', 'unknown')}")
 
-        if not data:
-            logger.warning("Получен пустой запрос на регистрацию")
-            return jsonify({'message': 'Отсутствуют данные запроса'}), 400
-
-        if not data.get('username') or not data.get('password') or not data.get('email'):
+        if not data or not data.get('username') or not data.get('password') or not data.get('email'):
             logger.warning("Неполные данные для регистрации")
-            return jsonify({'message': 'Необходимо указать имя пользователя, пароль и email'}), 400
+            return {"message": 'Необходимо указать имя пользователя, пароль и email'}, 400
 
         # Загружаем существующих пользователей
         users = load_users()
@@ -229,7 +261,7 @@ def register():
         if any(u['username'] == data['username'] for u in users):
             logger.warning(
                 f"Попытка регистрации существующего пользователя: {data['username']}")
-            return jsonify({'message': 'Пользователь с таким именем уже существует'}), 400
+            return {"message": 'Пользователь с таким именем уже существует'}, 400
 
         # Определяем следующий ID
         next_id = max([u['id'] for u in users], default=0) + 1
@@ -270,27 +302,22 @@ def register():
             logger.info(
                 f"Зарегистрирован новый пользователь: {new_user['username']}")
 
-            return jsonify(response_data), 201
+            return response_data, 201
         else:
             logger.error(
                 f"Ошибка при сохранении данных нового пользователя: {data['username']}")
-            return jsonify({'message': 'Ошибка при регистрации пользователя'}), 500
+            return {"message": 'Ошибка при регистрации пользователя'}, 500
 
     except Exception as e:
         logger.error(
             f"Ошибка при регистрации пользователя: {e}", exc_info=True)
-        return jsonify({'message': 'Ошибка регистрации: внутренняя ошибка сервера', 'error': str(e)}), 500
+        return {"message": f'Ошибка регистрации: внутренняя ошибка сервера', "error": str(e)}, 500
 
 
 @auth_bp.route('/me', methods=['GET', 'OPTIONS'])
 @add_cors_headers
 def get_current_user():
     """Получение данных текущего пользователя"""
-    # Обработка предварительных запросов OPTIONS
-    if request.method == 'OPTIONS':
-        response = jsonify({'status': 'ok'})
-        return response
-
     try:
         # Получаем токен из заголовка Authorization
         auth_header = request.headers.get('Authorization')
@@ -298,7 +325,7 @@ def get_current_user():
         if not auth_header or not auth_header.startswith('Bearer '):
             logger.warning(
                 "Попытка доступа к данным пользователя без токена авторизации")
-            return jsonify({'message': 'Отсутствует или неверный токен авторизации'}), 401
+            return {"message": 'Отсутствует или неверный токен авторизации'}, 401
 
         token = auth_header.split(' ')[1]
 
@@ -314,45 +341,46 @@ def get_current_user():
 
             if not user:
                 logger.warning(f"Пользователь с ID {user_id} не найден")
-                return jsonify({'message': 'Пользователь не найден'}), 404
+                return {"message": 'Пользователь не найден'}, 404
 
             logger.info(f"Запрошены данные пользователя: {user['username']}")
-            return jsonify({
+            return {
                 'id': user['id'],
                 'username': user['username'],
                 'email': user['email']
-            })
+            }
 
         except jwt.ExpiredSignatureError:
             logger.warning("Истекший токен авторизации")
-            return jsonify({'message': 'Срок действия токена истек'}), 401
+            return {"message": 'Срок действия токена истек'}, 401
         except jwt.InvalidTokenError as e:
             logger.warning(f"Недействительный токен: {e}")
-            return jsonify({'message': 'Неверный токен'}), 401
+            return {"message": 'Неверный токен'}, 401
 
     except Exception as e:
         logger.error(
             f"Ошибка при получении данных пользователя: {e}", exc_info=True)
-        return jsonify({'message': 'Внутренняя ошибка сервера', 'error': str(e)}), 500
+        return {"message": 'Внутренняя ошибка сервера', "error": str(e)}, 500
 
 
 @auth_bp.route('/update', methods=['PUT', 'OPTIONS'])
 @add_cors_headers
 def update_user():
     """Обновление данных пользователя"""
-    # Обработка предварительных запросов OPTIONS
-    if request.method == 'OPTIONS':
-        response = jsonify({'status': 'ok'})
-        return response
-
     try:
+        # Проверяем, что данные пришли в правильном формате
+        if not request.is_json:
+            logger.warning(
+                "Получены неверные данные для обновления, не JSON формат")
+            return {"message": "Ожидается JSON-формат"}, 400
+
         # Получаем токен из заголовка Authorization
         auth_header = request.headers.get('Authorization')
 
         if not auth_header or not auth_header.startswith('Bearer '):
             logger.warning(
                 "Попытка обновления данных пользователя без токена авторизации")
-            return jsonify({'message': 'Отсутствует или неверный токен авторизации'}), 401
+            return {"message": 'Отсутствует или неверный токен авторизации'}, 401
 
         token = auth_header.split(' ')[1]
 
@@ -367,7 +395,7 @@ def update_user():
             if not data:
                 logger.warning(
                     "Попытка обновления данных пользователя без данных")
-                return jsonify({'message': 'Нет данных для обновления'}), 400
+                return {"message": 'Нет данных для обновления'}, 400
 
             # Загружаем пользователей
             users = load_users()
@@ -379,7 +407,7 @@ def update_user():
             if user_index is None:
                 logger.warning(
                     f"Пользователь с ID {user_id} не найден для обновления")
-                return jsonify({'message': 'Пользователь не найден'}), 404
+                return {"message": 'Пользователь не найден'}, 404
 
             logger.info(
                 f"Обновление данных пользователя: {users[user_index]['username']}")
@@ -394,25 +422,25 @@ def update_user():
 
             # Сохраняем обновленный список пользователей
             if save_users(users):
-                return jsonify({
+                return {
                     'id': users[user_index]['id'],
                     'username': users[user_index]['username'],
                     'email': users[user_index]['email']
-                })
+                }
             else:
                 logger.error(
                     f"Ошибка при сохранении обновленных данных пользователя: {users[user_index]['username']}")
-                return jsonify({'message': 'Ошибка при обновлении данных пользователя'}), 500
+                return {"message": 'Ошибка при обновлении данных пользователя'}, 500
 
         except jwt.ExpiredSignatureError:
             logger.warning("Истекший токен авторизации при обновлении данных")
-            return jsonify({'message': 'Срок действия токена истек'}), 401
+            return {"message": 'Срок действия токена истек'}, 401
         except jwt.InvalidTokenError as e:
             logger.warning(
                 f"Недействительный токен при обновлении данных: {e}")
-            return jsonify({'message': 'Неверный токен'}), 401
+            return {"message": 'Неверный токен'}, 401
 
     except Exception as e:
         logger.error(
             f"Ошибка при обновлении данных пользователя: {e}", exc_info=True)
-        return jsonify({'message': 'Внутренняя ошибка сервера', 'error': str(e)}), 500
+        return {"message": 'Внутренняя ошибка сервера', "error": str(e)}, 500
