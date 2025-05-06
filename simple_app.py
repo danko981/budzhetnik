@@ -59,15 +59,17 @@ def create_app():
         else:
             return send_from_directory(app.static_folder, 'index.html')
 
-    # Обработчик CORS preflight запросов
-    @app.route('/api/v1/auth/<path:path>', methods=['OPTIONS'])
-    def handle_auth_options(path):
+    # Обработчик CORS preflight запросов для всех маршрутов
+    @app.route('/<path:path>', methods=['OPTIONS'])
+    def handle_options(path):
         response = make_response()
         response.headers.add('Access-Control-Allow-Origin', '*')
         response.headers.add('Access-Control-Allow-Headers',
                              'Content-Type,Authorization')
         response.headers.add('Access-Control-Allow-Methods',
                              'GET,PUT,POST,DELETE,OPTIONS')
+        response.headers.add('Access-Control-Max-Age', '3600')
+        response.status_code = 200
         return response
 
     # Обработчик ошибки 404

@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify, current_app
+from flask import Blueprint, request, jsonify, current_app, make_response
 import jwt
 import datetime
 import os
@@ -28,12 +28,20 @@ def add_cors_headers(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         response = f(*args, **kwargs)
-        response.headers.add('Access-Control-Allow-Origin', '*')
-        response.headers.add('Access-Control-Allow-Headers',
-                             'Content-Type,Authorization')
-        response.headers.add('Access-Control-Allow-Methods',
-                             'GET,PUT,POST,DELETE,OPTIONS')
-        return response
+
+        # Обработка случая, когда response - это кортеж (данные, код состояния)
+        if isinstance(response, tuple):
+            data, status_code = response
+            resp = make_response(jsonify(data), status_code)
+        else:
+            resp = response
+
+        resp.headers.add('Access-Control-Allow-Origin', '*')
+        resp.headers.add('Access-Control-Allow-Headers',
+                         'Content-Type,Authorization')
+        resp.headers.add('Access-Control-Allow-Methods',
+                         'GET,PUT,POST,DELETE,OPTIONS')
+        return resp
     return decorated_function
 
 
