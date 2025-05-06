@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Тест API Budgetnik</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+
+        .card {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+            padding: 20px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        input[type="text"],
+        input[type="password"],
+        input[type="email"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        .result {
+            background-color: #f9f9f9;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+            margin-top: 10px;
+            white-space: pre-wrap;
+            overflow-x: auto;
+        }
+
+        .tabs {
+            display: flex;
+            margin-bottom: 20px;
+        }
+
+        .tab {
+            padding: 10px 20px;
+            background-color: #ddd;
+            border: none;
+            cursor: pointer;
+            flex-grow: 1;
+            text-align: center;
+        }
+
+        .tab.active {
+            background-color: #4CAF50;
+            color: white;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Тестирование API Budgetnik</h1>
+
+    <div class="tabs">
+        <button class="tab active" onclick="openTab(event, 'login')">Вход</button>
+        <button class="tab" onclick="openTab(event, 'register')">Регистрация</button>
+        <button class="tab" onclick="openTab(event, 'profile')">Профиль</button>
+        <button class="tab" onclick="openTab(event, 'update')">Обновление</button>
+    </div>
+
+    <div id="login" class="tab-content active">
+        <div class="card">
+            <h2>Вход в систему</h2>
+            <div class="form-group">
+                <label for="loginUsername">Имя пользователя:</label>
+                <input type="text" id="loginUsername" placeholder="Введите имя пользователя" value="demo">
+            </div>
+            <div class="form-group">
+                <label for="loginPassword">Пароль:</label>
+                <input type="password" id="loginPassword" placeholder="Введите пароль" value="demo123">
+            </div>
+            <button onclick="login()">Войти</button>
+            <div id="loginResult" class="result"></div>
+        </div>
+    </div>
+
+    <div id="register" class="tab-content">
+        <div class="card">
+            <h2>Регистрация</h2>
+            <div class="form-group">
+                <label for="regUsername">Имя пользователя:</label>
+                <input type="text" id="regUsername" placeholder="Придумайте имя пользователя">
+            </div>
+            <div class="form-group">
+                <label for="regPassword">Пароль:</label>
+                <input type="password" id="regPassword" placeholder="Придумайте пароль">
+            </div>
+            <div class="form-group">
+                <label for="regEmail">Email:</label>
+                <input type="email" id="regEmail" placeholder="Введите email">
+            </div>
+            <button onclick="register()">Зарегистрироваться</button>
+            <div id="registerResult" class="result"></div>
+        </div>
+    </div>
+
+    <div id="profile" class="tab-content">
+        <div class="card">
+            <h2>Профиль пользователя</h2>
+            <p>Для получения данных профиля необходим токен авторизации.</p>
+            <div class="form-group">
+                <label for="profileToken">Токен:</label>
+                <input type="text" id="profileToken" placeholder="Вставьте полученный токен">
+            </div>
+            <button onclick="getProfile()">Получить данные профиля</button>
+            <div id="profileResult" class="result"></div>
+        </div>
+    </div>
+
+    <div id="update" class="tab-content">
+        <div class="card">
+            <h2>Обновление профиля</h2>
+            <p>Для обновления профиля необходим токен авторизации.</p>
+            <div class="form-group">
+                <label for="updateToken">Токен:</label>
+                <input type="text" id="updateToken" placeholder="Вставьте полученный токен">
+            </div>
+            <div class="form-group">
+                <label for="updateEmail">Новый Email:</label>
+                <input type="email" id="updateEmail" placeholder="Введите новый email">
+            </div>
+            <button onclick="updateProfile()">Обновить данные</button>
+            <div id="updateResult" class="result"></div>
+        </div>
+    </div>
+
+    <script>
+        // Загрузка конфигурации из файла environment.js
+        const apiBaseUrl = window.apiConfig ? window.apiConfig.authEndpoint : 'http://localhost:8000/api/v1/auth';
+
+        function openTab(evt, tabName) {
+            const tabContents = document.getElementsByClassName("tab-content");
+            for (let i = 0; i < tabContents.length; i++) {
+                tabContents[i].classList.remove("active");
+            }
+
+            const tabs = document.getElementsByClassName("tab");
+            for (let i = 0; i < tabs.length; i++) {
+                tabs[i].classList.remove("active");
+            }
+
+            document.getElementById(tabName).classList.add("active");
+            evt.currentTarget.classList.add("active");
+        }
+
+        async function login() {
+            const username = document.getElementById("loginUsername").value;
+            const password = document.getElementById("loginPassword").value;
+
+            if (!username || !password) {
+                document.getElementById("loginResult").textContent = "Пожалуйста, заполните все поля!";
+                return;
+            }
+
+            try {
+                const response = await fetch(`${apiBaseUrl}/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ username, password })
+                });
+
+                const data = await response.json();
+                document.getElementById("loginResult").textContent = JSON.stringify(data, null, 2);
+
+                // Если получен токен, автоматически заполним его для других вкладок
+                if (data.token) {
+                    document.getElementById("profileToken").value = data.token;
+                    document.getElementById("updateToken").value = data.token;
+                }
+            } catch (error) {
+                document.getElementById("loginResult").textContent = "Ошибка: " + error.message;
+            }
+        }
+
+        async function register() {
+            const username = document.getElementById("regUsername").value;
+            const password = document.getElementById("regPassword").value;
+            const email = document.getElementById("regEmail").value;
+
+            if (!username || !password || !email) {
+                document.getElementById("registerResult").textContent = "Пожалуйста, заполните все поля!";
+                return;
+            }
+
+            try {
+                const response = await fetch(`${apiBaseUrl}/register`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ username, password, email })
+                });
+
+                const data = await response.json();
+                document.getElementById("registerResult").textContent = JSON.stringify(data, null, 2);
+
+                // Если получен токен, автоматически заполним его для других вкладок
+                if (data.token) {
+                    document.getElementById("profileToken").value = data.token;
+                    document.getElementById("updateToken").value = data.token;
+                }
+            } catch (error) {
+                document.getElementById("registerResult").textContent = "Ошибка: " + error.message;
+            }
+        }
+
+        async function getProfile() {
+            const token = document.getElementById("profileToken").value;
+
+            if (!token) {
+                document.getElementById("profileResult").textContent = "Необходим токен авторизации!";
+                return;
+            }
+
+            try {
+                const response = await fetch(`${apiBaseUrl}/me`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                const data = await response.json();
+                document.getElementById("profileResult").textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                document.getElementById("profileResult").textContent = "Ошибка: " + error.message;
+            }
+        }
+
+        async function updateProfile() {
+            const token = document.getElementById("updateToken").value;
+            const email = document.getElementById("updateEmail").value;
+
+            if (!token) {
+                document.getElementById("updateResult").textContent = "Необходим токен авторизации!";
+                return;
+            }
+
+            if (!email) {
+                document.getElementById("updateResult").textContent = "Введите новый email!";
+                return;
+            }
+
+            try {
+                const response = await fetch(`${apiBaseUrl}/update`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ email })
+                });
+
+                const data = await response.json();
+                document.getElementById("updateResult").textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                document.getElementById("updateResult").textContent = "Ошибка: " + error.message;
+            }
+        }
+    </script>
+    <script src="/environment.js"></script>
+</body>
+
+</html>
