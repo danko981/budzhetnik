@@ -209,8 +209,16 @@ def login():
             'exp': datetime.datetime.utcnow() + datetime.timedelta(days=1)
         }, current_app.config.get('SECRET_KEY', 'dev-secret-key'))
 
+        # Создаем refresh токен
+        refresh_token = jwt.encode({
+            'sub': user['id'],
+            'username': user['username'],
+            'exp': datetime.datetime.utcnow() + datetime.timedelta(days=7)
+        }, current_app.config.get('SECRET_KEY', 'dev-secret-key'))
+
         response_data = {
-            'token': token,
+            'access_token': token,
+            'refresh_token': refresh_token,
             'user': {
                 'id': user['id'],
                 'username': user['username'],
