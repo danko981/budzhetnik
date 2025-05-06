@@ -106,6 +106,9 @@ def create_app(config_name='default'):
     jwt.init_app(app)
     api.init_app(app, doc='/api/docs')
 
+    # Настройка корректной обработки статических файлов
+    app.static_url_path = ''  # Пустой URL-путь для статических файлов
+
     # Регистрация всех пространств имен API
     from views.auth_restx import ns as auth_ns
     from views.categories_restx import ns as categories_ns

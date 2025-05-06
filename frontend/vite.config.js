@@ -23,6 +23,8 @@ export default defineConfig({
     build: {
         outDir: 'dist',
         sourcemap: false,
+        // Настройка для использования относительных путей
+        base: './',
         // Добавляем настройку для статических ресурсов
         assetsDir: 'assets',
         // Настройка для обработки ошибок сборки
