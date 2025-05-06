@@ -31,10 +31,24 @@ def add_cors_headers(f):
 
         # Обработка случая, когда response - это кортеж (данные, код состояния)
         if isinstance(response, tuple):
-            data, status_code = response
-            resp = make_response(jsonify(data), status_code)
+            if len(response) == 2:
+                data, status_code = response
+                # Проверяем, что data не является объектом Response
+                if hasattr(data, 'headers'):
+                    # Если это уже объект Response, просто добавляем заголовки
+                    resp = data
+                else:
+                    # Создаем объект Response из данных
+                    resp = make_response(jsonify(data), status_code)
+            else:
+                resp = make_response(response)
         else:
-            resp = response
+            # Если это уже объект Response
+            if hasattr(response, 'headers'):
+                resp = response
+            else:
+                # Создаем объект Response из данных
+                resp = make_response(jsonify(response))
 
         resp.headers.add('Access-Control-Allow-Origin', '*')
         resp.headers.add('Access-Control-Allow-Headers',
