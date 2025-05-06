@@ -72,7 +72,7 @@ class ErrorBoundary extends React.Component {
 
 // Функция для проверки авторизации
 const RequireAuth = ({ children }) => {
-    const isAuthenticated = localStorage.getItem('token') !== null;
+    const isAuthenticated = localStorage.getItem('access_token') !== null || localStorage.getItem('token') !== null;
     return isAuthenticated ? children : <Navigate to="/login" />;
 };
 

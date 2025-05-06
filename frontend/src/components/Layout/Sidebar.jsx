@@ -43,6 +43,9 @@ const Sidebar = ({ mobileOpen, onClose }) => {
     const navigate = useNavigate();
     const theme = useTheme();
 
+    // Для диагностики
+    console.log('Current location:', location);
+
     // Содержимое панели
     const drawer = (
         <div>
@@ -54,6 +57,7 @@ const Sidebar = ({ mobileOpen, onClose }) => {
                         <ListItemButton
                             selected={location.pathname === item.path}
                             onClick={() => {
+                                console.log(`Navigating to ${item.path}`);
                                 navigate(item.path);
                                 if (mobileOpen) onClose();
                             }}
@@ -89,6 +93,7 @@ const Sidebar = ({ mobileOpen, onClose }) => {
                         <ListItemButton
                             selected={location.pathname === item.path}
                             onClick={() => {
+                                console.log(`Navigating to ${item.path}`);
                                 navigate(item.path);
                                 if (mobileOpen) onClose();
                             }}

@@ -1,10 +1,9 @@
 import axios from 'axios';
 
-const API_BASE_URL =
-    import.meta.env.VITE_API_URL ||
-    (process.env.NODE_ENV === 'development'
-        ? 'http://localhost:8000'
-        : 'https://api.budzhetnik.ru');
+// Правильное определение базового URL
+const API_BASE_URL = process.env.NODE_ENV === 'development'
+    ? 'http://localhost:8000'
+    : 'https://api.budzhetnik.ru';
 
 // Создаем экземпляр axios с настройками по умолчанию
 export const api = axios.create({
