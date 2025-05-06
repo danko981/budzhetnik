@@ -1,9 +1,10 @@
-from flask import request, jsonify
+from flask import request, jsonify, current_app
 from flask_restx import Namespace, Resource, fields
 import jwt
 import datetime
 import os
 import json
+import logging
 
 # Создаем Namespace для авторизации
 ns = Namespace('auth', description='Операции с аутентификацией и авторизацией')
@@ -71,7 +72,7 @@ def load_users():
             save_users(initial_users)
             return initial_users
     except Exception as e:
-        print(f"Ошибка при чтении файла пользователей: {e}")
+        logging.error(f"Ошибка при чтении файла пользователей: {e}")
         # Возвращаем тестовых пользователей в случае ошибки
         return [
             {
@@ -93,11 +94,14 @@ def load_users():
 
 def save_users(users):
     try:
+        # Сначала проверяем, существует ли директория
+        os.makedirs(os.path.dirname(USERS_FILE), exist_ok=True)
+
         with open(USERS_FILE, 'w') as file:
             json.dump(users, file, ensure_ascii=False, indent=4)
         return True
     except Exception as e:
-        print(f"Ошибка при сохранении файла пользователей: {e}")
+        logging.error(f"Ошибка при сохранении файла пользователей: {e}")
         return False
 
 
@@ -105,126 +109,169 @@ def save_users(users):
 class Login(Resource):
     """Вход пользователя и получение токена"""
     @ns.expect(login_model)
-    @ns.marshal_with(auth_response, code=200)
+    @ns.response(200, 'Успешная авторизация', auth_response)
+    @ns.response(400, 'Некорректные данные запроса')
     @ns.response(401, 'Неверное имя пользователя или пароль')
     def post(self):
-        data = request.json
+        try:
+            data = request.json
 
-        if not data or not data.get('username') or not data.get('password'):
-            return {'message': 'Необходимо указать имя пользователя и пароль'}, 400
+            if not data or not data.get('username') or not data.get('password'):
+                return {'message': 'Необходимо указать имя пользователя и пароль'}, 400
 
-        # Загружаем пользователей
-        users = load_users()
+            # Загружаем пользователей
+            users = load_users()
 
-        # Находим пользователя по имени
-        user = next(
-            (u for u in users if u['username'] == data['username']), None)
+            # Находим пользователя по имени
+            user = next(
+                (u for u in users if u['username'] == data['username']), None)
 
-        if not user or user['password'] != data['password']:
-            return {'message': 'Неверное имя пользователя или пароль'}, 401
+            if not user or user['password'] != data['password']:
+                return {'message': 'Неверное имя пользователя или пароль'}, 401
 
-        # Создаем JWT-токен
-        token = jwt.encode({
-            'sub': user['id'],
-            'username': user['username'],
-            'exp': datetime.datetime.utcnow() + datetime.timedelta(days=1)
-        }, os.environ.get('SECRET_KEY', 'dev-secret-key'))
-
-        return {
-            'token': token,
-            'user': {
-                'id': user['id'],
+            # Создаем JWT-токен
+            token = jwt.encode({
+                'sub': user['id'],
                 'username': user['username'],
-                'email': user['email']
-            },
-            'message': 'Авторизация успешна'
-        }
+                'exp': datetime.datetime.utcnow() + datetime.timedelta(days=1)
+            }, os.environ.get('SECRET_KEY', 'dev-secret-key'))
+
+            response_data = {
+                'token': token,
+                'user': {
+                    'id': user['id'],
+                    'username': user['username'],
+                    'email': user['email']
+                },
+                'message': 'Авторизация успешна'
+            }
+
+            # Логирование успешной авторизации
+            if current_app and current_app.logger:
+                current_app.logger.info(
+                    f"Успешная авторизация пользователя: {user['username']}")
+
+            return response_data
+
+        except Exception as e:
+            logging.error(f"Ошибка при авторизации: {e}")
+            return {'message': 'Ошибка авторизации: внутренняя ошибка сервера'}, 500
 
 
 @ns.route('/register')
 class Register(Resource):
     """Регистрация нового пользователя"""
     @ns.expect(register_model)
-    @ns.marshal_with(auth_response, code=201)
+    @ns.response(201, 'Пользователь успешно зарегистрирован', auth_response)
     @ns.response(400, 'Некорректные данные или пользователь уже существует')
+    @ns.response(500, 'Внутренняя ошибка сервера')
     def post(self):
-        data = request.json
+        try:
+            data = request.json
 
-        if not data or not data.get('username') or not data.get('password') or not data.get('email'):
-            return {'message': 'Необходимо указать имя пользователя, пароль и email'}, 400
+            if not data:
+                return {'message': 'Отсутствуют данные запроса'}, 400
 
-        # Загружаем существующих пользователей
-        users = load_users()
+            if not data.get('username') or not data.get('password') or not data.get('email'):
+                return {'message': 'Необходимо указать имя пользователя, пароль и email'}, 400
 
-        # Проверяем, существует ли пользователь с таким именем
-        if any(u['username'] == data['username'] for u in users):
-            return {'message': 'Пользователь с таким именем уже существует'}, 400
+            # Загружаем существующих пользователей
+            users = load_users()
 
-        # Создаем нового пользователя
-        new_user = {
-            'id': len(users) + 1,
-            'username': data['username'],
-            # В реальном приложении пароль будет хешироваться
-            'password': data['password'],
-            'email': data['email'],
-            'created_at': datetime.datetime.now().isoformat()
-        }
+            # Проверяем, существует ли пользователь с таким именем
+            if any(u['username'] == data['username'] for u in users):
+                return {'message': 'Пользователь с таким именем уже существует'}, 400
 
-        # Добавляем пользователя в список
-        users.append(new_user)
+            # Создаем нового пользователя
+            new_user = {
+                'id': len(users) + 1,
+                'username': data['username'],
+                # В реальном приложении пароль будет хешироваться
+                'password': data['password'],
+                'email': data['email'],
+                'created_at': datetime.datetime.now().isoformat()
+            }
 
-        # Сохраняем обновленный список пользователей
-        if save_users(users):
-            return {
-                'message': 'Пользователь успешно зарегистрирован',
-                'user': {
-                    'id': new_user['id'],
+            # Добавляем пользователя в список
+            users.append(new_user)
+
+            # Сохраняем обновленный список пользователей
+            if save_users(users):
+                # Генерируем токен для нового пользователя
+                token = jwt.encode({
+                    'sub': new_user['id'],
                     'username': new_user['username'],
-                    'email': new_user['email']
+                    'exp': datetime.datetime.utcnow() + datetime.timedelta(days=1)
+                }, os.environ.get('SECRET_KEY', 'dev-secret-key'))
+
+                response_data = {
+                    'token': token,
+                    'message': 'Пользователь успешно зарегистрирован',
+                    'user': {
+                        'id': new_user['id'],
+                        'username': new_user['username'],
+                        'email': new_user['email']
+                    }
                 }
-            }, 201
-        else:
-            return {'message': 'Ошибка при регистрации пользователя'}, 500
+
+                # Логирование успешной регистрации
+                if current_app and current_app.logger:
+                    current_app.logger.info(
+                        f"Зарегистрирован новый пользователь: {new_user['username']}")
+
+                return response_data, 201
+            else:
+                return {'message': 'Ошибка при регистрации пользователя'}, 500
+
+        except Exception as e:
+            logging.error(f"Ошибка при регистрации пользователя: {e}")
+            return {'message': 'Ошибка регистрации: внутренняя ошибка сервера'}, 500
 
 
 @ns.route('/me')
 class Me(Resource):
     """Получение данных текущего пользователя"""
     @ns.doc('get_current_user', security='Bearer Auth')
-    @ns.marshal_with(user_model)
+    @ns.response(200, 'Данные пользователя получены', user_model)
     @ns.response(401, 'Требуется авторизация')
+    @ns.response(404, 'Пользователь не найден')
     def get(self):
-        # Получаем токен из заголовка Authorization
-        auth_header = request.headers.get('Authorization')
-
-        if not auth_header or not auth_header.startswith('Bearer '):
-            return {'message': 'Отсутствует или неверный токен авторизации'}, 401
-
-        token = auth_header.split(' ')[1]
-
         try:
-            # Декодируем токен
-            payload = jwt.decode(token, os.environ.get(
-                'SECRET_KEY', 'dev-secret-key'), algorithms=['HS256'])
-            user_id = payload['sub']
+            # Получаем токен из заголовка Authorization
+            auth_header = request.headers.get('Authorization')
 
-            # Загружаем пользователей и находим пользователя по ID
-            users = load_users()
-            user = next((u for u in users if u['id'] == user_id), None)
+            if not auth_header or not auth_header.startswith('Bearer '):
+                return {'message': 'Отсутствует или неверный токен авторизации'}, 401
 
-            if not user:
-                return {'message': 'Пользователь не найден'}, 404
+            token = auth_header.split(' ')[1]
 
-            return {
-                'id': user['id'],
-                'username': user['username'],
-                'email': user['email']
-            }
+            try:
+                # Декодируем токен
+                payload = jwt.decode(token, os.environ.get(
+                    'SECRET_KEY', 'dev-secret-key'), algorithms=['HS256'])
+                user_id = payload['sub']
 
-        except jwt.ExpiredSignatureError:
-            return {'message': 'Срок действия токена истек'}, 401
-        except jwt.InvalidTokenError:
-            return {'message': 'Неверный токен'}, 401
+                # Загружаем пользователей и находим пользователя по ID
+                users = load_users()
+                user = next((u for u in users if u['id'] == user_id), None)
+
+                if not user:
+                    return {'message': 'Пользователь не найден'}, 404
+
+                return {
+                    'id': user['id'],
+                    'username': user['username'],
+                    'email': user['email']
+                }
+
+            except jwt.ExpiredSignatureError:
+                return {'message': 'Срок действия токена истек'}, 401
+            except jwt.InvalidTokenError:
+                return {'message': 'Неверный токен'}, 401
+
+        except Exception as e:
+            logging.error(f"Ошибка при получении данных пользователя: {e}")
+            return {'message': 'Внутренняя ошибка сервера'}, 500
 
 
 @ns.route('/update')
@@ -232,57 +279,65 @@ class UpdateUser(Resource):
     """Обновление данных пользователя"""
     @ns.doc('update_user', security='Bearer Auth')
     @ns.expect(update_model)
-    @ns.marshal_with(user_model)
+    @ns.response(200, 'Данные пользователя обновлены', user_model)
+    @ns.response(400, 'Некорректные данные запроса')
     @ns.response(401, 'Требуется авторизация')
+    @ns.response(404, 'Пользователь не найден')
+    @ns.response(500, 'Внутренняя ошибка сервера')
     def put(self):
-        # Получаем токен из заголовка Authorization
-        auth_header = request.headers.get('Authorization')
-
-        if not auth_header or not auth_header.startswith('Bearer '):
-            return {'message': 'Отсутствует или неверный токен авторизации'}, 401
-
-        token = auth_header.split(' ')[1]
-
         try:
-            # Декодируем токен
-            payload = jwt.decode(token, os.environ.get(
-                'SECRET_KEY', 'dev-secret-key'), algorithms=['HS256'])
-            user_id = payload['sub']
+            # Получаем токен из заголовка Authorization
+            auth_header = request.headers.get('Authorization')
 
-            # Получаем данные для обновления
-            data = request.json
-            if not data:
-                return {'message': 'Нет данных для обновления'}, 400
+            if not auth_header or not auth_header.startswith('Bearer '):
+                return {'message': 'Отсутствует или неверный токен авторизации'}, 401
 
-            # Загружаем пользователей
-            users = load_users()
+            token = auth_header.split(' ')[1]
 
-            # Находим индекс пользователя для обновления
-            user_index = next((i for i, u in enumerate(users)
-                              if u['id'] == user_id), None)
+            try:
+                # Декодируем токен
+                payload = jwt.decode(token, os.environ.get(
+                    'SECRET_KEY', 'dev-secret-key'), algorithms=['HS256'])
+                user_id = payload['sub']
 
-            if user_index is None:
-                return {'message': 'Пользователь не найден'}, 404
+                # Получаем данные для обновления
+                data = request.json
+                if not data:
+                    return {'message': 'Нет данных для обновления'}, 400
 
-            # Обновляем данные пользователя
-            if 'email' in data:
-                users[user_index]['email'] = data['email']
+                # Загружаем пользователей
+                users = load_users()
 
-            if 'password' in data:
-                # В реальном приложении пароль будет хешироваться
-                users[user_index]['password'] = data['password']
+                # Находим индекс пользователя для обновления
+                user_index = next((i for i, u in enumerate(users)
+                                   if u['id'] == user_id), None)
 
-            # Сохраняем обновленный список пользователей
-            if save_users(users):
-                return {
-                    'id': users[user_index]['id'],
-                    'username': users[user_index]['username'],
-                    'email': users[user_index]['email']
-                }
-            else:
-                return {'message': 'Ошибка при обновлении данных пользователя'}, 500
+                if user_index is None:
+                    return {'message': 'Пользователь не найден'}, 404
 
-        except jwt.ExpiredSignatureError:
-            return {'message': 'Срок действия токена истек'}, 401
-        except jwt.InvalidTokenError:
-            return {'message': 'Неверный токен'}, 401
+                # Обновляем данные пользователя
+                if 'email' in data:
+                    users[user_index]['email'] = data['email']
+
+                if 'password' in data:
+                    # В реальном приложении пароль будет хешироваться
+                    users[user_index]['password'] = data['password']
+
+                # Сохраняем обновленный список пользователей
+                if save_users(users):
+                    return {
+                        'id': users[user_index]['id'],
+                        'username': users[user_index]['username'],
+                        'email': users[user_index]['email']
+                    }
+                else:
+                    return {'message': 'Ошибка при обновлении данных пользователя'}, 500
+
+            except jwt.ExpiredSignatureError:
+                return {'message': 'Срок действия токена истек'}, 401
+            except jwt.InvalidTokenError:
+                return {'message': 'Неверный токен'}, 401
+
+        except Exception as e:
+            logging.error(f"Ошибка при обновлении данных пользователя: {e}")
+            return {'message': 'Внутренняя ошибка сервера'}, 500

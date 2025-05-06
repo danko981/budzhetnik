@@ -38,7 +38,13 @@ api = Api(
 def create_app():
     # Создание экземпляра приложения
     app = Flask(__name__, static_folder='static')
-    CORS(app)
+
+    # Улучшенная настройка CORS
+    CORS(app,
+         resources={r"/*": {"origins": "*"}},
+         supports_credentials=True,
+         methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+         allow_headers=["Content-Type", "Authorization", "X-Requested-With"])
 
     # Конфигурация
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key')
@@ -48,6 +54,9 @@ def create_app():
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['JWT_SECRET_KEY'] = os.environ.get(
         'JWT_SECRET_KEY', app.config['SECRET_KEY'])
+
+    # Устанавливаем максимальное время ожидания ответа
+    app.config['PROPAGATE_EXCEPTIONS'] = True
 
     # Инициализация компонентов с приложением
     db.init_app(app)
@@ -97,6 +106,16 @@ def create_app():
         if request.path.startswith('/api/'):
             return jsonify({"error": "Resource not found"}), 404
         return send_from_directory(app.static_folder, 'index.html')
+
+    # Предварительная обработка запросов (для CORS)
+    @app.after_request
+    def after_request(response):
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers',
+                             'Content-Type,Authorization')
+        response.headers.add('Access-Control-Allow-Methods',
+                             'GET,PUT,POST,DELETE,OPTIONS')
+        return response
 
     return app
 
